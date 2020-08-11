@@ -22,6 +22,7 @@ from .utils import to_cuda, concat_batches, find_modules
 from .utils import parse_lambda_config, update_lambdas
 from .model.memory import HashingMemory
 from .model.transformer import TransformerFFN
+from src.evaluation.xqg import get_parameters
 
 
 logger = getLogger()
@@ -814,6 +815,25 @@ class EncDecTrainer(Trainer):
 
         super().__init__(data, params)
 
+    def set_optimizers(self):
+        """
+        Set optimizers.
+        """
+        params = self.params
+        if not params.finetuning_only:
+            super().set_optimizers()
+            return
+
+        self.optimizers = {}
+
+        # model optimizer (excluding memory values)
+        assert params.train_layers!= ""
+        parameters = get_parameters(self.encoder, params.train_layers)
+        self.optimizers['model'] = get_optimizer(parameters, params.optimizer)
+
+        # log
+        logger.info("Optimizers: %s" % ", ".join(self.optimizers.keys()))
+
     def mt_step(self, lang1, lang2, lambda_coeff):
         """
         Machine translation step.
@@ -836,6 +856,10 @@ class EncDecTrainer(Trainer):
             (x1, len1) = self.add_noise(x1, len1)
         else:
             (x1, len1), (x2, len2) = self.get_batch('mt', lang1, lang2)
+            if params.finetuning_only:
+                # Add noise on the input also
+                (x1, len1) = self.add_noise(x1, len1)
+
         langs1 = x1.clone().fill_(lang1_id)
         langs2 = x2.clone().fill_(lang2_id)
 

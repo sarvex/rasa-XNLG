@@ -288,22 +288,23 @@ def check_data_params(params):
     assert len(params.bt_steps) == 0 or not params.encoder_only
     params.bt_src_langs = [l1 for l1, _, _ in params.bt_steps]
 
-    # check monolingual datasets
-    required_mono = set([l1 for l1, l2 in (params.mlm_steps + params.clm_steps + params.s2slm_steps) if l2 is None] + params.ae_steps + params.bt_src_langs)
-    # params.mono_dataset = {
-    #     lang: {
-    #         splt: os.path.join(params.data_path, '%s.%s.pth' % (splt, lang))
-    #         for splt in ['train', 'valid', 'test']
-    #     } for lang in params.langs if lang in required_mono
-    # }
-    # NOTE swap lang splt
-    params.mono_dataset = {
-        lang: {
-            splt: os.path.join(params.data_path, '%s.%s.pth' % (lang, splt))
-            for splt in ['train', 'valid', 'test']
-        } for lang in params.langs if lang in required_mono
-    }
-    assert all([all([os.path.isfile(p) for p in paths.values()]) for paths in params.mono_dataset.values()]), params.mono_dataset
+    if not params.finetuning_only:
+        # check monolingual datasets
+        required_mono = set([l1 for l1, l2 in (params.mlm_steps + params.clm_steps + params.s2slm_steps) if l2 is None] + params.ae_steps + params.bt_src_langs)
+        # params.mono_dataset = {
+        #     lang: {
+        #         splt: os.path.join(params.data_path, '%s.%s.pth' % (splt, lang))
+        #         for splt in ['train', 'valid', 'test']
+        #     } for lang in params.langs if lang in required_mono
+        # }
+        # NOTE swap lang splt
+        params.mono_dataset = {
+            lang: {
+                splt: os.path.join(params.data_path, '%s.%s.pth' % (lang, splt))
+                for splt in ['train', 'valid', 'test']
+            } for lang in params.langs if lang in required_mono
+        }
+        assert all([all([os.path.isfile(p) for p in paths.values()]) for paths in params.mono_dataset.values()]), params.mono_dataset
 
     # check parallel datasets
     required_para_train = set(params.clm_steps + params.mlm_steps + params.pc_steps + params.mt_steps + params.s2slm_steps)
@@ -340,16 +341,19 @@ def load_data(params):
     data = {}
 
     # monolingual datasets
-    load_mono_data(params, data)
+    if not params.finetuning_only:
+        # No mono data when finetuning
+        load_mono_data(params, data)
+
+        # monolingual data summary
+        logger.info('============ Data summary')
+        for lang, v in data['mono_stream'].items():
+            for data_set in v.keys():
+                logger.info(
+                    '{: <18} - {: >5} - {: >12}:{: >10}'.format('Monolingual data', data_set, lang, len(v[data_set])))
 
     # parallel datasets
     load_para_data(params, data)
-
-    # monolingual data summary
-    logger.info('============ Data summary')
-    for lang, v in data['mono_stream'].items():
-        for data_set in v.keys():
-            logger.info('{: <18} - {: >5} - {: >12}:{: >10}'.format('Monolingual data', data_set, lang, len(v[data_set])))
 
     # parallel data summary
     for (src, tgt), v in data['para'].items():

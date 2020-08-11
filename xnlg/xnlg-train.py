@@ -147,6 +147,10 @@ def get_parser():
                         help="Validation metrics")
     parser.add_argument("--accumulate_gradients", type=int, default=1,
                         help="Accumulate model gradients over N iterations (N times larger batch sizes)")
+    parser.add_argument("--finetuning_only", type=int, default=0,
+                        help="Whether to invoke the script for finetuning procedure only")
+    parser.add_argument("--train_layers", type=str, default="",
+                        help="Which layers to finetune. To be used only in finetuning mode")
 
     # training coefficients
     parser.add_argument("--lambda_mlm", type=str, default="1",
