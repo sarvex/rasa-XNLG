@@ -52,14 +52,14 @@ def get_parameters(model, train_layers_str):
     ret += model.layer_norm1[i-1].parameters()
     ret += model.ffns[i-1].parameters()
     ret += model.layer_norm2[i-1].parameters()
-    logger.info("Adding layer-%s parameters to optimizer" % i)
+    logger.info(f"Adding layer-{i} parameters to optimizer")
 
   return ret
 
 def tokens2words(toks):
   words = []
   for tok in toks:
-    if len(words) > 0 and words[-1].endswith("@@"):
+    if words and words[-1].endswith("@@"):
       words[-1] = words[-1][:-2] + tok
     else:
       words.append(tok)
@@ -87,7 +87,7 @@ class XQG(object):
 
     for lang, sz in zip(XQG_LANGS, decode_vocab_sizes):
       
-      fn = os.path.join(params.vocab_path, lang + ".vocab")
+      fn = os.path.join(params.vocab_path, f"{lang}.vocab")
       assert os.path.isfile(fn)
 
       mask = torch.ByteTensor(n_words)
@@ -104,7 +104,7 @@ class XQG(object):
             # logger.warn("Token %s not in dico" % tok)
             count += 1
           else: mask[dico.word2id[tok]] = 1
-      
+
       logger.warn("%d tokens not in dico" % count)
       self.vocab_mask[lang] = mask
   
@@ -151,33 +151,33 @@ class XQG(object):
     """Run XQG training /evaluation"""
     params = self.params
     self.data = self.load_data()
-    if not self.data["dico"] == self._embedder.dico:
+    if self.data["dico"] != self._embedder.dico:
       raise Exception(
         ("dico different between pre-trained model and current data"))
-    
+
     self.embedder = copy.deepcopy(self._embedder)
     self.embedder.cuda()
     # TODO embedder doesn't reload pred layer by default
 
     self.optimizer = get_optimizer(
       self.embedder.get_parameters(params), params.optimizer)
-    
+
     # distributed
     if params.multi_gpu:
       logger.info("Using nn.parallel.DistributedDataParallel ...")
       self.embedder.parallel(params)
-    
+
     if params.overfitting_test:
       self.single_batch_overfitting_test()
-    
+
     # generate references
     self.gen_references(self.embedder.dico)
-    
+
     # decode with vocab
     if self.params.decode_with_vocab: self.setup_vocab_mask()
 
     self.best_scores = defaultdict(float)
-    
+
     for epoch in range(params.n_epochs):
       self.epoch = epoch
       logger.info("XQG - Training epoch %d ..." % epoch)
@@ -196,8 +196,6 @@ class XQG(object):
     ea_lens = len_e + len_a
     lens = ea_lens if is_test else ea_lens + len_q
     slen, bs = lens.max().item(), lens.size(0)
-    tasks = None
-
     lang_id = params.lang2id[lang]
     pad_index = params.pad_index
     eos_index = params.eos_index
@@ -207,12 +205,10 @@ class XQG(object):
 
     x = sent_e.new(slen, bs).fill_(pad_index)
     x[:len_e.max().item()].copy_(sent_e)
-    
+
     positions = torch.arange(slen)[:, None].repeat(1, bs).to(sent_e.device)
     langs = sent_e.new(slen, bs).fill_(lang_id)
-    if use_task_emb:
-      tasks = sent_e.new(slen, bs).fill_(enc_task_index)
-
+    tasks = sent_e.new(slen, bs).fill_(enc_task_index) if use_task_emb else None
     for i in range(bs):
       # copy answer to the batch
       x[len_e[i]: ea_lens[i], i].copy_(sent_a[:len_a[i], i])
@@ -222,7 +218,7 @@ class XQG(object):
         if use_task_emb:
           positions[ea_lens[i]:, i] -= ea_lens[i]
           tasks[ea_lens[i]:, i] = dec_task_index
-    
+
     return x, lens, positions, langs, tasks, ea_lens
 
   def train(self):
@@ -444,7 +440,7 @@ class XQG(object):
       res = []
       ref = []
 
-      for i in range(30):
+      for _ in range(30):
         x, lens, positions, langs, tasks, ea_lens = self.concat_qae_batch(
         batch, "en", use_task_emb=True)
         x, y, pred_mask = mask_out_v2(params, x, lens, ea_lens)
@@ -499,7 +495,7 @@ class XQG(object):
       # convert sentences to words
       # for jth sentence in batch
       for j in range(decoded.size(1)):
-        
+
         sent = decoded[:, j]
         delimiters = (sent == params.eos_index).nonzero().view(-1)
         assert len(delimiters) >= 1 and delimiters[0].item() == 0
@@ -516,7 +512,7 @@ class XQG(object):
 
         res.append(trg_words)
         ref.append([ref_words])
-      
+
       print("BLEU:", corpus_bleu(ref, res))
 
   def get_iterator_v2(self, splt, lang=None, ae_lang=None, q_lang=None, ds_name='xqg'):
@@ -525,8 +521,9 @@ class XQG(object):
     ae_lang = self._parse_lang(ae_lang)
     q_lang = self._parse_lang(q_lang)
     assert ae_lang[0] == q_lang[0]
-    logger.info("Getting iterator -- ae_lang: (%s, %s), q_lang: (%s, %s)" % (
-      ae_lang[0], ae_lang[1], q_lang[0], q_lang[1]))
+    logger.info(
+        f"Getting iterator -- ae_lang: ({ae_lang[0]}, {ae_lang[1]}), q_lang: ({q_lang[0]}, {q_lang[1]})"
+    )
     return self.get_or_load_data(ae_lang, q_lang, splt, ds_name).get_iterator(
       shuffle=(splt == 'train'),
       group_by_size=self.params.group_by_size,
@@ -556,16 +553,14 @@ class XQG(object):
     if type(lang) == str:
       if lang in XQG_LANGS:
         return (lang, lang)
-      else:
-        lang1, lang2 = lang.split("2")
-        assert lang1 in XQG_LANGS
-        assert lang2 in XQG_LANGS
-        return (lang1, lang2)
+      lang1, lang2 = lang.split("2")
+      assert lang1 in XQG_LANGS
+      assert lang2 in XQG_LANGS
+      return (lang1, lang2)
   
   def lang2str(self, lang):
     lang1, lang2 = lang
-    if lang1 == lang2: return lang1
-    return "%s-%s" % (lang1, lang2)
+    return lang1 if lang1 == lang2 else f"{lang1}-{lang2}"
 
   def get_or_load_data(self, ae_lang, q_lang, splt, ds_name='xqg'):
     params = self.params
@@ -579,13 +574,13 @@ class XQG(object):
       self.data[lang] = {}
 
     dpath = os.path.join(params.data_path, 'eval', ds_name)
-    
-    q = load_binarized(os.path.join(dpath, "%s.q.%s.pth" % (
-      splt, self.lang2str(q_lang))), params)
-    a = load_binarized(os.path.join(dpath, "%s.a.%s.pth" % (
-      splt, self.lang2str(ae_lang))), params)
-    e = load_binarized(os.path.join(dpath, "%s.e.%s.pth" % (
-      splt, self.lang2str(ae_lang))), params)
+
+    q = load_binarized(
+        os.path.join(dpath, f"{splt}.q.{self.lang2str(q_lang)}.pth"), params)
+    a = load_binarized(
+        os.path.join(dpath, f"{splt}.a.{self.lang2str(ae_lang)}.pth"), params)
+    e = load_binarized(
+        os.path.join(dpath, f"{splt}.e.{self.lang2str(ae_lang)}.pth"), params)
     data["dico"] = data.get("dico", q["dico"])
     set_dico_parameters(params, data, q["dico"])
     set_dico_parameters(params, data, a["dico"])
@@ -601,7 +596,7 @@ class XQG(object):
       params.max_len_q,
       params.max_len_a,
       params.max_len_e)
-    
+
     return self.data[lang][splt]
 
   def load_data(self):
@@ -618,12 +613,9 @@ class XQG(object):
         if splt == "train" and lang != "en":
           del data[lang]['train']
           continue
-        q = load_binarized(os.path.join(dpath, "%s.q.%s.pth" % (
-          splt, lang)), params)
-        a = load_binarized(os.path.join(dpath, "%s.a.%s.pth" % (
-          splt, lang)), params)
-        e = load_binarized(os.path.join(dpath, "%s.e.%s.pth" % (
-          splt, lang)), params)
+        q = load_binarized(os.path.join(dpath, f"{splt}.q.{lang}.pth"), params)
+        a = load_binarized(os.path.join(dpath, f"{splt}.a.{lang}.pth"), params)
+        e = load_binarized(os.path.join(dpath, f"{splt}.e.{lang}.pth"), params)
         data["dico"] = data.get("dico", q["dico"])
         set_dico_parameters(params, data, q["dico"])
         set_dico_parameters(params, data, a["dico"])
@@ -671,12 +663,12 @@ class XQG(object):
           NOTE lang1-lang2 is just the translation direction,
           rather than qg direction!!!!!
           """
-          q = load_binarized(os.path.join(dpath, "%s.q.%s-%s.pth" % (
-            splt, lang1, lang2)), params)
-          a = load_binarized(os.path.join(dpath, "%s.a.%s-%s.pth" % (
-            splt, lang1, lang2)), params)
-          e = load_binarized(os.path.join(dpath, "%s.e.%s-%s.pth" % (
-            splt, lang1, lang2)), params)
+          q = load_binarized(
+              os.path.join(dpath, f"{splt}.q.{lang1}-{lang2}.pth"), params)
+          a = load_binarized(
+              os.path.join(dpath, f"{splt}.a.{lang1}-{lang2}.pth"), params)
+          e = load_binarized(
+              os.path.join(dpath, f"{splt}.e.{lang1}-{lang2}.pth"), params)
           data["dico"] = data.get("dico", q["dico"])
           set_dico_parameters(params, data, q["dico"])
           set_dico_parameters(params, data, a["dico"])
@@ -725,16 +717,16 @@ class XQG_v2(XQG):
 
     self.data = self.load_data()
     # self.data = {}
-    if not self.data["dico"] == self.dico:
+    if self.data["dico"] != self.dico:
       raise Exception(
         ("dico different between pre-trained model and current data"))
-    
+
     self.encoder.cuda()
     self.decoder.cuda()
     parameters = []
     if params.train_layers == "all":
-      parameters.extend([_ for _ in self.encoder.parameters()])
-      parameters.extend([_ for _ in self.decoder.parameters()])
+      parameters.extend(list(self.encoder.parameters()))
+      parameters.extend(list(self.decoder.parameters()))
     elif params.train_layers == "decoder":
       parameters = self.decoder.parameters()
     elif params.train_layers == "encoder":
@@ -748,7 +740,7 @@ class XQG_v2(XQG):
     if self.params.decode_with_vocab: self.setup_vocab_mask(self.dico)
 
     self.best_scores = defaultdict(float)
-    
+
     for epoch in range(params.n_epochs):
       self.epoch = epoch
       logger.info("XQG - Training epoch %d ..." % epoch)
@@ -824,8 +816,6 @@ class XQG_v2(XQG):
 
     for lang in XQG_LANGS:
       
-      debug_num = 0
-
       results = []
       evidences = []
       ans = []
@@ -844,18 +834,20 @@ class XQG_v2(XQG):
           encoded = encoder("fwd", x=x, lengths=lens, langs=langs, causal=False)
           encoded = encoded.transpose(0, 1)
 
-          if params.beam_size == 1:
-            decoded, _ = decoder.generate(
+          decoded, _ = (decoder.generate(
               encoded, lens, lang_id, max_len=max_len, vocab_mask=vocab_mask)
-          else:
-            # TODO config for length_penalty and early_stopping
-            decoded, _ = decoder.generate_beam(
-              encoded, lens, lang_id, beam_size=params.beam_size,
-              length_penalty=0.9, early_stopping=False,
-              max_len=max_len, vocab_mask=vocab_mask)
-
+                        if params.beam_size == 1 else decoder.generate_beam(
+                            encoded,
+                            lens,
+                            lang_id,
+                            beam_size=params.beam_size,
+                            length_penalty=0.9,
+                            early_stopping=False,
+                            max_len=max_len,
+                            vocab_mask=vocab_mask,
+                        ))
         for j in range(decoded.size(1)):
-          
+
           sent = decoded[:, j]
           delimiters = (sent == params.eos_index).nonzero().view(-1)
           assert len(delimiters) >= 1 and delimiters[0].item() == 0
@@ -875,9 +867,6 @@ class XQG_v2(XQG):
             a_toks = [dico[a_sent[k].item()] for k in range(len(a_sent))]
             a_words = tokens2words(a_toks)
             ans.append(a_words)
-        
-        debug_num += 1
-        # if debug_num >= 10: break
 
       # calculate bleu
       # print(len(self.references[lang]), len(results))
@@ -897,26 +886,24 @@ class XQG_v2(XQG):
       if eval_res["Bleu_4"] > best_scores[lang]:
         logger.info("New best Bleu_4 score! Saving model...")
         best_scores[lang] = eval_res["Bleu_4"]
-        self.save("best_%s_Bleu_4" % lang)
+        self.save(f"best_{lang}_Bleu_4")
 
       logger.info("XQG - %s - Epoch %d - Best BLEU-4: %.5f - scores: %s" % (
         lang, self.epoch, best_scores[lang], eval_res))
 
   def save(self, name):
-    path = os.path.join(self.params.dump_path, "%s.pth" % name)
-    logger.info("Saving %s to %s ..." % (name, path))
+    path = os.path.join(self.params.dump_path, f"{name}.pth")
+    logger.info(f"Saving {name} to {path} ...")
     data = {
-      "epoch": getattr(self, "epoch", 0),
-      "encoder": self.encoder.state_dict(),
-      "decoder": self.decoder.state_dict(),
-      "enc_params": {
-        k: v for k, v in self.params.encoder_model_params.__dict__.items()},
-      "dec_params": {
-        k: v for k, v in self.params.decoder_model_params.__dict__.items()},
-      "dico_id2word": self.dico.id2word,
-      "dico_word2id": self.dico.word2id,
-      "dico_counts": self.dico.counts,
-      "params": {k: v for k, v in self.params.__dict__.items()}
+        "epoch": getattr(self, "epoch", 0),
+        "encoder": self.encoder.state_dict(),
+        "decoder": self.decoder.state_dict(),
+        "enc_params": dict(self.params.encoder_model_params.__dict__.items()),
+        "dec_params": dict(self.params.decoder_model_params.__dict__.items()),
+        "dico_id2word": self.dico.id2word,
+        "dico_word2id": self.dico.word2id,
+        "dico_counts": self.dico.counts,
+        "params": dict(self.params.__dict__.items()),
     }
     torch.save(data, path)
 
@@ -943,13 +930,13 @@ class XQG_v3(XQG_v2):
     eval_directions = [d.split("-") for d in params.eval_directions.split(",")]
 
     self.data = {}
-    
+
     self.encoder.cuda()
     self.decoder.cuda()
     parameters = []
     if params.train_layers == "all":
-      parameters.extend([_ for _ in self.encoder.parameters()])
-      parameters.extend([_ for _ in self.decoder.parameters()])
+      parameters.extend(list(self.encoder.parameters()))
+      parameters.extend(list(self.decoder.parameters()))
     elif params.train_layers == "decoder":
       parameters = self.decoder.parameters()
     elif params.train_layers == "encoder":
@@ -962,7 +949,7 @@ class XQG_v3(XQG_v2):
     if self.params.decode_with_vocab: self.setup_vocab_mask(self.dico)
 
     self.best_scores = defaultdict(float)
-    
+
     for epoch in range(params.n_epochs):
       self.epoch = epoch
       logger.info("XQG - Training epoch %d ..." % epoch)

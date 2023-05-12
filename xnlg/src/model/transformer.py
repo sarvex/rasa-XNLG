@@ -50,11 +50,7 @@ def Embedding(num_embeddings, embedding_dim, padding_idx=None):
 
 
 def Linear(in_features, out_features, bias=True):
-    m = nn.Linear(in_features, out_features, bias)
-    # nn.init.normal_(m.weight, mean=0, std=1)
-    # nn.init.xavier_uniform_(m.weight)
-    # nn.init.constant_(m.bias, 0.)
-    return m
+    return nn.Linear(in_features, out_features, bias)
 
 
 def create_sinusoidal_embeddings(n_pos, dim, out):
@@ -174,7 +170,9 @@ class MultiHeadAttention(nn.Module):
             klen = qlen if cache is None else cache['slen'] + qlen
         else:
             klen = kv.size(1)
-        assert dim == self.dim, 'Dimensions do not match: %s input vs %s configured' % (dim, self.dim)
+        assert (
+            dim == self.dim
+        ), f'Dimensions do not match: {dim} input vs {self.dim} configured'
         n_heads = self.n_heads
         dim_per_head = dim // n_heads
         mask_reshape = (bs, 1, qlen, klen) if mask.dim() == 3 else (bs, 1, 1, klen)
@@ -330,7 +328,7 @@ class TransformerModel(nn.Module):
         elif mode == 'predict':
             return self.predict(**kwargs)
         else:
-            raise Exception("Unknown mode: %s" % mode)
+            raise Exception(f"Unknown mode: {mode}")
 
     def fwd(self, x, lengths, causal, src_enc=None, src_len=None, positions=None, langs=None, cache=None):
         """
@@ -507,7 +505,7 @@ class TransformerModel(nn.Module):
             assert tensor.size() == (1, bs, self.dim), (cur_len, max_len, src_enc.size(), tensor.size(), (1, bs, self.dim))
             tensor = tensor.data[-1, :, :].type_as(src_enc)  # (bs, dim)
             scores = self.pred_layer.get_scores(tensor)      # (bs, n_words)
-            
+
             if vocab_mask is not None: 
                 scores[vocab_mask.expand_as(scores)] = -float('inf')
             # select next words: sample or greedy
@@ -521,7 +519,7 @@ class TransformerModel(nn.Module):
             generated[cur_len] = next_words * unfinished_sents + self.pad_index * (1 - unfinished_sents)
             gen_len.add_(unfinished_sents)
             unfinished_sents.mul_(next_words.ne(self.eos_index).long())
-            cur_len = cur_len + 1
+            cur_len += 1
 
             # stop when there is a </s> in each sentence, or if we exceed the maximul length
             if unfinished_sents.max() == 0:
@@ -663,8 +661,8 @@ class TransformerModel(nn.Module):
                         break
 
                 # update next beam content
-                assert len(next_sent_beam) == 0 if cur_len + 1 == max_len else beam_size
-                if len(next_sent_beam) == 0:
+                assert not next_sent_beam if cur_len + 1 == max_len else beam_size
+                if not next_sent_beam:
                     next_sent_beam = [(0, self.pad_index, 0)] * beam_size  # pad the batch
                 next_batch_beam.extend(next_sent_beam)
                 assert len(next_batch_beam) == beam_size * (sent_id + 1)
@@ -678,12 +676,12 @@ class TransformerModel(nn.Module):
             # re-order batch and internal states
             generated = generated[:, beam_idx]
             generated[cur_len] = beam_words
-            for k in cache.keys():
+            for k in cache:
                 if k != 'slen':
                     cache[k] = (cache[k][0][beam_idx], cache[k][1][beam_idx])
 
             # update current length
-            cur_len = cur_len + 1
+            cur_len += 1
 
             # stop when we are done with each sentence
             if all(done):

@@ -14,7 +14,7 @@ def get_params():
 def main():
   p = get_params()
   hypothesis=p.i
-  references=[os.path.join(p.dataset_dir, "test.q.%s.lc" % p.lang)]
+  references = [os.path.join(p.dataset_dir, f"test.q.{p.lang}.lc")]
   print(compute_metrics(hypothesis, references, no_overlap=False, no_skipthoughts=True, no_glove=True))
 
 

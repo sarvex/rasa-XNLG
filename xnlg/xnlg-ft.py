@@ -82,7 +82,7 @@ def get_params():
   parser.add_argument("--optimizer_p", type=str, default="adam,lr=0.0001",
                       help="Projection (classifier) optimizer")
   parser.add_argument("--optimizer", type=str, default="adam,lr=0.0001",
-                      help="Projection (classifier) optimizer")                    
+                      help="Projection (classifier) optimizer")
   parser.add_argument("--n_epochs", type=int, default=100,
                       help="Maximum number of epochs")
   parser.add_argument("--epoch_size", type=int, default=-1,
@@ -117,11 +117,11 @@ def get_params():
                       help="multi-gpu")
 
   parser.add_argument("--train_layers", type=str, default="",
-                      help="train layers of encoder") 
+                      help="train layers of encoder")
   parser.add_argument("--n_enc_layers", type=int, default=0,
-                      help="") 
+                      help="")
   parser.add_argument("--n_dec_layers", type=int, default=0,
-                      help="") 
+                      help="")
   parser.add_argument("--fixed_embeddings", type=bool_flag, default=False,
                     help="fixed_embeddings")
   parser.add_argument("--fixed_position_embeddings", type=bool_flag, default=False,
@@ -134,7 +134,7 @@ def get_params():
                       help="")
   parser.add_argument("--no_init", type=str, default="None",
                       help="dont init with pretrained models")
-  
+
   parser.add_argument("--train_directions", type=str, default="en-en",
                       help="")
   parser.add_argument("--eval_directions", type=str, default="",
@@ -145,9 +145,7 @@ def get_params():
                       help="path to .vec produced by fasttext")
   parser.add_argument("--cut_dataset", type=int, default=-1,
                       help="Number of sentences in dataset. -1 for full dataset.")
-  params = parser.parse_args()
-
-  return params
+  return parser.parse_args()
 
 
 def read_txt_embeddings(logger, path):
@@ -173,7 +171,7 @@ def read_txt_embeddings(logger, path):
       if word in word2id:
         logger.warning("Word \"%s\" found twice!" % word)
         continue
-      if not vect.shape == (_emb_dim_file,):
+      if vect.shape != (_emb_dim_file, ):
         logger.warning("Invalid dimension (%i) for word \"%s\" in line %i."
                         % (vect.shape[0], word, i))
         continue
@@ -200,7 +198,7 @@ def load_bin_embeddings(logger, path):
   import numpy as np
   model = fasttext.load_model(path)
   words = model.get_labels()
-  logger.info("Loaded binary model from %s" % path)
+  logger.info(f"Loaded binary model from {path}")
 
   # compute new vocabulary / embeddings
   embeddings = np.concatenate([model.get_word_vector(w)[None] for w in words], 0)
@@ -251,42 +249,41 @@ def run_xnlg():
   # tasks
   params.transfer_tasks = params.transfer_tasks.split(',')
   assert len(params.transfer_tasks) > 0
-  assert all([task in TASKS for task in params.transfer_tasks])
+  assert all(task in TASKS for task in params.transfer_tasks)
 
   reloaded = torch.load(params.model_path)
   model_params = AttrDict(reloaded['params'])
-  logger.info(
-    "Supported languages: %s" % ", ".join(model_params.lang2id.keys()))
+  logger.info(f'Supported languages: {", ".join(model_params.lang2id.keys())}')
   params.n_langs = model_params['n_langs']
   params.id2lang = model_params['id2lang']
   params.lang2id = model_params['lang2id']
 
-  
+
   if "enc_params" in reloaded:
     encoder_model_params = AttrDict(reloaded["enc_params"])
-  elif params.n_enc_layers == model_params.n_layers or params.n_enc_layers == 0:
+  elif params.n_enc_layers in [model_params.n_layers, 0]:
     encoder_model_params = model_params
   else:
     encoder_model_params = AttrDict(reloaded['params'])
     encoder_model_params.n_layers = params.n_enc_layers
     assert model_params.n_layers is not encoder_model_params.n_layers
-  
+
   if "dec_params" in reloaded:
     decoder_model_params = AttrDict(reloaded["dec_params"])
-  elif params.n_dec_layers == model_params.n_layers or params.n_dec_layers == 0:
+  elif params.n_dec_layers in [model_params.n_layers, 0]:
     decoder_model_params = model_params
   else:
     decoder_model_params = AttrDict(reloaded['params'])
     decoder_model_params.n_layers = params.n_dec_layers
     assert model_params.n_layers is not decoder_model_params.n_layers
-  
+
   params.encoder_model_params = encoder_model_params
   params.decoder_model_params = decoder_model_params
 
   if params.emb_dim != -1:
     encoder_model_params.emb_dim = params.emb_dim
     decoder_model_params.emb_dim = params.emb_dim
-  
+
   # build dictionary / build encoder / build decoder / reload weights
   dico = Dictionary(reloaded['dico_id2word'], reloaded['dico_word2id'], reloaded['dico_counts'])
 
@@ -307,7 +304,7 @@ def run_xnlg():
   if params.no_init == "all":
     logger.info("All Models will not load state dict.!!!")
   elif params.reload_emb != "":
-    logger.info("Reloading embedding from %s ..." % params.reload_emb)
+    logger.info(f"Reloading embedding from {params.reload_emb} ...")
     word2id, embeddings = read_txt_embeddings(logger, params.reload_emb)
     set_pretrain_emb(logger, encoder, dico, word2id, embeddings)
     set_pretrain_emb(logger, decoder, dico, word2id, embeddings)
@@ -322,7 +319,7 @@ def run_xnlg():
         encoder.load_state_dict(_process_state_dict(reloaded['encoder']), strict=False)
       if params.no_init != "decoder":
         decoder.load_state_dict(_process_state_dict(reloaded['decoder']))
-  
+
   scores = {}
 
   # run

@@ -58,7 +58,7 @@ class XNLI:
 
         # load data
         self.data = self.load_data()
-        if not self.data['dico'] == self._embedder.dico:
+        if self.data['dico'] != self._embedder.dico:
             raise Exception(("Dictionary in evaluation data (%i words) seems different than the one " +
                              "in the pretrained model (%i words). Please verify you used the same dictionary, " +
                              "and the same values for max_vocab and min_count.") % (len(self.data['dico']), len(self._embedder.dico)))
@@ -203,10 +203,10 @@ class XNLI:
 
                 # compute accuracy
                 acc = 100.0 * valid / total
-                scores['xnli_%s_%s_acc' % (splt, lang)] = acc
+                scores[f'xnli_{splt}_{lang}_acc'] = acc
                 logger.info("XNLI - %s - %s - Epoch %i - Acc: %.1f%%" % (splt, lang, self.epoch, acc))
 
-        logger.info("__log__:%s" % json.dumps(scores))
+        logger.info(f"__log__:{json.dumps(scores)}")
         return scores
 
     def load_data(self):
@@ -228,8 +228,8 @@ class XNLI:
                     continue
 
                 # load data and dictionary
-                data1 = load_binarized(os.path.join(dpath, '%s.s1.%s.pth' % (splt, lang)), params)
-                data2 = load_binarized(os.path.join(dpath, '%s.s2.%s.pth' % (splt, lang)), params)
+                data1 = load_binarized(os.path.join(dpath, f'{splt}.s1.{lang}.pth'), params)
+                data2 = load_binarized(os.path.join(dpath, f'{splt}.s2.{lang}.pth'), params)
                 data['dico'] = data.get('dico', data1['dico'])
 
                 # set dictionary parameters
@@ -244,7 +244,7 @@ class XNLI:
                 )
 
                 # load labels
-                with open(os.path.join(dpath, '%s.label.%s' % (splt, lang)), 'r') as f:
+                with open(os.path.join(dpath, f'{splt}.label.{lang}'), 'r') as f:
                     labels = [label2id[l.rstrip()] for l in f]
                 data[lang][splt]['y'] = torch.LongTensor(labels)
                 assert len(data[lang][splt]['x']) == len(data[lang][splt]['y'])

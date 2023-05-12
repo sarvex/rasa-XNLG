@@ -111,17 +111,57 @@ class Trainer(object):
         self.n_total_iter = 0
         self.n_sentences = 0
         self.stats = OrderedDict(
-            [('processed_s', 0), ('processed_w', 0)] +
-            [('CLM-%s' % l, []) for l in params.langs] +
-            [('CLM-%s-%s' % (l1, l2), []) for l1, l2 in data['para'].keys()] +
-            [('CLM-%s-%s' % (l2, l1), []) for l1, l2 in data['para'].keys()] +
-            [('MLM-%s' % l, []) for l in params.langs] +
-            [('MLM-%s-%s' % (l1, l2), []) for l1, l2 in data['para'].keys()] +
-            [('MLM-%s-%s' % (l2, l1), []) for l1, l2 in data['para'].keys()] +
-            [('PC-%s-%s' % (l1, l2), []) for l1, l2 in params.pc_steps] +
-            [('AE-%s' % lang, []) for lang in params.ae_steps] +
-            [('MT-%s-%s' % (l1, l2), []) for l1, l2 in params.mt_steps] +
-            [('BT-%s-%s-%s' % (l1, l2, l3), []) for l1, l2, l3 in params.bt_steps]
+            (
+                (
+                    (
+                        (
+                            (
+                                (
+                                    (
+                                        (
+                                            (
+                                                (
+                                                    [
+                                                        ('processed_s', 0),
+                                                        ('processed_w', 0),
+                                                    ]
+                                                    + [
+                                                        (f'CLM-{l}', [])
+                                                        for l in params.langs
+                                                    ]
+                                                )
+                                                + [
+                                                    (f'CLM-{l1}-{l2}', [])
+                                                    for l1, l2 in data[
+                                                        'para'
+                                                    ].keys()
+                                                ]
+                                            )
+                                            + [
+                                                (f'CLM-{l2}-{l1}', [])
+                                                for l1, l2 in data['para'].keys()
+                                            ]
+                                        )
+                                        + [(f'MLM-{l}', []) for l in params.langs]
+                                    )
+                                    + [
+                                        (f'MLM-{l1}-{l2}', [])
+                                        for l1, l2 in data['para'].keys()
+                                    ]
+                                )
+                                + [
+                                    (f'MLM-{l2}-{l1}', [])
+                                    for l1, l2 in data['para'].keys()
+                                ]
+                            )
+                            + [(f'PC-{l1}-{l2}', []) for l1, l2 in params.pc_steps]
+                        )
+                        + [(f'AE-{lang}', []) for lang in params.ae_steps]
+                    )
+                    + [(f'MT-{l1}-{l2}', []) for l1, l2 in params.mt_steps]
+                )
+                + [(f'BT-{l1}-{l2}-{l3}', []) for l1, l2, l3 in params.bt_steps]
+            )
         )
         self.last_time = time.time()
 
@@ -138,8 +178,7 @@ class Trainer(object):
         params = self.params
         self.parameters = {}
         named_params = []
-        if train_names == "": train_names = self.MODEL_NAMES
-        else: train_names = train_names.split(",")
+        train_names = self.MODEL_NAMES if train_names == "" else train_names.split(",")
         for name in train_names:
             named_params.extend([(k, p) for k, p in getattr(self, name).named_parameters() if p.requires_grad])
 
@@ -161,17 +200,16 @@ class Trainer(object):
         Set optimizers.
         """
         params = self.params
-        self.optimizers = {}
-
-        # model optimizer (excluding memory values)
-        self.optimizers['model'] = get_optimizer(self.parameters['model'], params.optimizer)
+        self.optimizers = {
+            'model': get_optimizer(self.parameters['model'], params.optimizer)
+        }
 
         # memory values optimizer
         if params.use_memory:
             self.optimizers['memory'] = get_optimizer(self.parameters['memory'], params.mem_values_optimizer)
 
         # log
-        logger.info("Optimizers: %s" % ", ".join(self.optimizers.keys()))
+        logger.info(f'Optimizers: {", ".join(self.optimizers.keys())}')
 
     def init_amp(self):
         """
@@ -188,10 +226,7 @@ class Trainer(object):
         )
         for name, model in zip(self.MODEL_NAMES, models):
             setattr(self, name, model)
-        self.optimizers = {
-            opt_name: optimizer
-            for opt_name, optimizer in zip(opt_names, optimizers)
-        }
+        self.optimizers = dict(zip(opt_names, optimizers))
 
     def optimize(self, loss):
         """
@@ -222,23 +257,21 @@ class Trainer(object):
             for optimizer in optimizers:
                 optimizer.step()
 
-        # AMP optimization
+        elif self.n_iter % params.accumulate_gradients == 0:
+            with apex.amp.scale_loss(loss, optimizers) as scaled_loss:
+                scaled_loss.backward()
+            if params.clip_grad_norm > 0:
+                for name in names:
+                    # norm_check_a = (sum([p.grad.norm(p=2).item() ** 2 for p in apex.amp.master_params(self.optimizers[name])])) ** 0.5
+                    clip_grad_norm_(apex.amp.master_params(self.optimizers[name]), params.clip_grad_norm)
+                    # norm_check_b = (sum([p.grad.norm(p=2).item() ** 2 for p in apex.amp.master_params(self.optimizers[name])])) ** 0.5
+                    # print(name, norm_check_a, norm_check_b)
+            for optimizer in optimizers:
+                optimizer.step()
+                optimizer.zero_grad()
         else:
-            if self.n_iter % params.accumulate_gradients == 0:
-                with apex.amp.scale_loss(loss, optimizers) as scaled_loss:
-                    scaled_loss.backward()
-                if params.clip_grad_norm > 0:
-                    for name in names:
-                        # norm_check_a = (sum([p.grad.norm(p=2).item() ** 2 for p in apex.amp.master_params(self.optimizers[name])])) ** 0.5
-                        clip_grad_norm_(apex.amp.master_params(self.optimizers[name]), params.clip_grad_norm)
-                        # norm_check_b = (sum([p.grad.norm(p=2).item() ** 2 for p in apex.amp.master_params(self.optimizers[name])])) ** 0.5
-                        # print(name, norm_check_a, norm_check_b)
-                for optimizer in optimizers:
-                    optimizer.step()
-                    optimizer.zero_grad()
-            else:
-                with apex.amp.scale_loss(loss, optimizers, delay_unscale=True) as scaled_loss:
-                    scaled_loss.backward()
+            with apex.amp.scale_loss(loss, optimizers, delay_unscale=True) as scaled_loss:
+                scaled_loss.backward()
 
     def iter(self):
         """
@@ -268,7 +301,9 @@ class Trainer(object):
         # learning rates
         s_lr = " - "
         for k, v in self.optimizers.items():
-            s_lr = s_lr + (" - %s LR: " % k) + " / ".join("{:.4e}".format(group['lr']) for group in v.param_groups)
+            s_lr = f"{s_lr} - {k} LR: " + " / ".join(
+                "{:.4e}".format(group['lr']) for group in v.param_groups
+            )
 
         # processing speed
         new_time = time.time()
@@ -288,7 +323,9 @@ class Trainer(object):
         """
         Create a new iterator for a dataset.
         """
-        logger.info("Creating new training data iterator (%s) ..." % ','.join([str(x) for x in [iter_name, lang1, lang2] if x is not None]))
+        logger.info(
+            f"Creating new training data iterator ({','.join([str(x) for x in [iter_name, lang1, lang2] if x is not None])}) ..."
+        )
         if lang2 is None:
             if stream:
                 iterator = self.data['mono_stream'][lang1]['train'].get_iterator(shuffle=True)
@@ -498,8 +535,8 @@ class Trainer(object):
         if not self.params.is_master:
             return
 
-        path = os.path.join(self.params.dump_path, '%s.pth' % name)
-        logger.info("Saving %s to %s ..." % (name, path))
+        path = os.path.join(self.params.dump_path, f'{name}.pth')
+        logger.info(f"Saving {name} to {path} ...")
 
         data = {
             'epoch': self.epoch,
@@ -520,7 +557,7 @@ class Trainer(object):
         data['dico_id2word'] = self.data['dico'].id2word
         data['dico_word2id'] = self.data['dico'].word2id
         data['dico_counts'] = self.data['dico'].counts
-        data['params'] = {k: v for k, v in self.params.__dict__.items()}
+        data['params'] = dict(self.params.__dict__.items())
 
         torch.save(data, path)
 
@@ -532,9 +569,8 @@ class Trainer(object):
         if not os.path.isfile(checkpoint_path):
             if self.params.reload_checkpoint == '':
                 return
-            else:
-                checkpoint_path = self.params.reload_checkpoint
-                assert os.path.isfile(checkpoint_path)
+            checkpoint_path = self.params.reload_checkpoint
+            assert os.path.isfile(checkpoint_path)
         logger.warning(f"Reloading checkpoint from {checkpoint_path} ...")
         data = torch.load(checkpoint_path, map_location='cpu')
 
@@ -544,18 +580,14 @@ class Trainer(object):
 
         # reload optimizers
         for name in self.optimizers.keys():
-            if False:  # AMP checkpoint reloading is buggy, we cannot do that - TODO: fix - https://github.com/NVIDIA/apex/issues/250
-                logger.warning(f"Reloading checkpoint optimizer {name} ...")
-                self.optimizers[name].load_state_dict(data[f'{name}_optimizer'])
-            else:  # instead, we only reload current iterations / learning rates
-                logger.warning(f"Not reloading checkpoint optimizer {name}.")
-                for group_id, param_group in enumerate(self.optimizers[name].param_groups):
-                    if 'num_updates' not in param_group:
-                        logger.warning(f"No 'num_updates' for optimizer {name}.")
-                        continue
-                    logger.warning(f"Reloading 'num_updates' and 'lr' for optimizer {name}.")
-                    param_group['num_updates'] = data[f'{name}_optimizer']['param_groups'][group_id]['num_updates']
-                    param_group['lr'] = self.optimizers[name].get_lr_for_step(param_group['num_updates'])
+            logger.warning(f"Not reloading checkpoint optimizer {name}.")
+            for group_id, param_group in enumerate(self.optimizers[name].param_groups):
+                if 'num_updates' not in param_group:
+                    logger.warning(f"No 'num_updates' for optimizer {name}.")
+                    continue
+                logger.warning(f"Reloading 'num_updates' and 'lr' for optimizer {name}.")
+                param_group['num_updates'] = data[f'{name}_optimizer']['param_groups'][group_id]['num_updates']
+                param_group['lr'] = self.optimizers[name].get_lr_for_step(param_group['num_updates'])
 
         # reload main metrics
         self.epoch = data['epoch'] + 1
@@ -587,7 +619,7 @@ class Trainer(object):
             if factor * scores[metric] > factor * self.best_metrics[metric]:
                 self.best_metrics[metric] = scores[metric]
                 logger.info('New best score for %s: %.6f' % (metric, scores[metric]))
-                self.save_checkpoint('best-%s' % metric, include_optimizers=False)
+                self.save_checkpoint(f'best-{metric}', include_optimizers=False)
 
     def end_epoch(self, scores):
         """
@@ -684,7 +716,9 @@ class Trainer(object):
         # forward / loss
         tensor = model('fwd', x=x, lengths=lengths, langs=langs, causal=True)
         _, loss = model('predict', tensor=tensor, pred_mask=pred_mask, y=y, get_scores=False)
-        self.stats[('CLM-%s' % lang1) if lang2 is None else ('CLM-%s-%s' % (lang1, lang2))].append(loss.item())
+        self.stats[
+            f'CLM-{lang1}' if lang2 is None else f'CLM-{lang1}-{lang2}'
+        ].append(loss.item())
         loss = lambda_coeff * loss
 
         # optimize
@@ -719,7 +753,9 @@ class Trainer(object):
         # forward / loss
         tensor = model('fwd', x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
         _, loss = model('predict', tensor=tensor, pred_mask=pred_mask, y=y, get_scores=False)
-        self.stats[('MLM-%s' % lang1) if lang2 is None else ('MLM-%s-%s' % (lang1, lang2))].append(loss.item())
+        self.stats[
+            f'MLM-{lang1}' if lang2 is None else f'MLM-{lang1}-{lang2}'
+        ].append(loss.item())
         loss = lambda_coeff * loss
 
         # optimize
@@ -774,7 +810,7 @@ class Trainer(object):
         emb = (model.module if params.multi_gpu else model).embeddings.weight
         pred = F.linear(h, emb[CLF_ID1].unsqueeze(0), emb[CLF_ID2, 0])
         loss = F.binary_cross_entropy_with_logits(pred.view(-1), y.to(pred.device).type_as(pred))
-        self.stats['PC-%s-%s' % (lang1, lang2)].append(loss.item())
+        self.stats[f'PC-{lang1}-{lang2}'].append(loss.item())
         loss = lambda_coeff * loss
 
         # optimize
@@ -857,7 +893,9 @@ class EncDecTrainer(Trainer):
 
         # loss
         _, loss = self.decoder('predict', tensor=dec2, pred_mask=pred_mask, y=y, get_scores=False)
-        self.stats[('AE-%s' % lang1) if lang1 == lang2 else ('MT-%s-%s' % (lang1, lang2))].append(loss.item())
+        self.stats[
+            f'AE-{lang1}' if lang1 == lang2 else f'MT-{lang1}-{lang2}'
+        ].append(loss.item())
         loss = lambda_coeff * loss
 
         # optimize
@@ -924,7 +962,7 @@ class EncDecTrainer(Trainer):
 
         # loss
         _, loss = self.decoder('predict', tensor=dec3, pred_mask=pred_mask, y=y1, get_scores=False)
-        self.stats[('BT-%s-%s-%s' % (lang1, lang2, lang3))].append(loss.item())
+        self.stats[f'BT-{lang1}-{lang2}-{lang3}'].append(loss.item())
 
         # optimize
         self.optimize(loss)

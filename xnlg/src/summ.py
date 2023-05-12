@@ -31,7 +31,7 @@ class XSummEvalOnly(XSumm):
     dico = self.dico
 
     x_lang, y_lang = direction
-    print("Performing %s-%s-xsumm" % (x_lang, y_lang))
+    print(f"Performing {x_lang}-{y_lang}-xsumm")
 
     X, Y = [], []
     x_lang_id = params.lang2id[x_lang[-2:]]
@@ -59,7 +59,7 @@ class XSummEvalOnly(XSumm):
             encoded, len_x, y_lang_id, beam_size=params.beam_size,
             length_penalty=0.9, early_stopping=False,
             max_len=params.max_dec_len, vocab_mask=vocab_mask)
-    
+
       for j in range(decoded.size(1)):
         sent = decoded[:, j]
         delimiters = (sent == params.eos_index).nonzero().view(-1)
@@ -74,7 +74,7 @@ class XSummEvalOnly(XSumm):
     return Y
   
   def summ(self, direction, out_fn):
-    print("%s-summ to %s" % (direction, out_fn))
+    print(f"{direction}-summ to {out_fn}")
     results = self.summ4dataset(direction)
     with open(out_fn, "w") as fp:
       for line in results:
@@ -131,7 +131,7 @@ def get_params():
   params = parser.parse_args()
 
   # model_name = "best_%s_rouge-l.pth" % params.direction
-  model_name = "best_%s_Bleu_4.pth" % params.direction
+  model_name = f"best_{params.direction}_Bleu_4.pth"
   model_path = os.path.join(params.model_dir, params.job_name, model_name)
   params.model_path = model_path
   print("use model from", model_path)

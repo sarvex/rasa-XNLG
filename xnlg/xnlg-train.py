@@ -256,7 +256,7 @@ def main(params):
         scores = evaluator.run_all_evals(trainer)
         for k, v in scores.items():
             logger.info("%s -> %.6f" % (k, v))
-        logger.info("__log__:%s" % json.dumps(scores))
+        logger.info(f"__log__:{json.dumps(scores)}")
         exit()
 
     # set sampling probabilities for training
@@ -306,7 +306,7 @@ def main(params):
         for k, v in scores.items():
             logger.info("%s -> %.6f" % (k, v))
         if params.is_master:
-            logger.info("__log__:%s" % json.dumps(scores))
+            logger.info(f"__log__:{json.dumps(scores)}")
 
         # end of epoch
         trainer.save_best_model(scores)

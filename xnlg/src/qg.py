@@ -30,13 +30,13 @@ class XQGEvalOnly(XQG_v3):
     dico = self.dico
 
     src_lang, trg_lang = direction
-    print("Performing %s-%s-xsumm" % (src_lang, trg_lang))
+    print(f"Performing {src_lang}-{trg_lang}-xsumm")
 
     results = []
 
     trg_lang_id = params.lang2id[trg_lang]
     vocab_mask=self.vocab_mask[trg_lang] if params.decode_with_vocab else None
-    
+
     for batch in tqdm(self.get_iterator_v2(
       "test", ae_lang=src_lang, q_lang=src_lang, ds_name=params.ds_name)):
 
@@ -58,9 +58,9 @@ class XQGEvalOnly(XQG_v3):
             encoded, lens, trg_lang_id, beam_size=params.beam_size,
             length_penalty=0.9, early_stopping=False,
             max_len=max_len, vocab_mask=vocab_mask)
-    
+
       for j in range(decoded.size(1)):
-    
+
         sent = decoded[:, j]
         delimiters = (sent == params.eos_index).nonzero().view(-1)
         assert len(delimiters) >= 1 and delimiters[0].item() == 0
@@ -74,7 +74,7 @@ class XQGEvalOnly(XQG_v3):
     return results
 
   def qg(self, direction, out_fn=None):
-    print("%s-qg to %s" % (direction, out_fn))
+    print(f"{direction}-qg to {out_fn}")
     # self.set_data(src_lang, trg_lang)
     results = self.qg4dataset(direction)
     if out_fn is None: return results
@@ -167,12 +167,12 @@ def get_params():
                       help="Model location", required=True)
   params = parser.parse_args()
 
-  model_name = "best_%s_Bleu_4.pth" % params.trg_lang
+  model_name = f"best_{params.trg_lang}_Bleu_4.pth"
   model_path = os.path.join(params.model_dir, params.job_name, model_name)
   params.model_path = model_path
   print("use model from", model_path)
 
-  params.lang_pair = "%s-%s" % (params.src_lang, params.trg_lang)
+  params.lang_pair = f"{params.src_lang}-{params.trg_lang}"
   os.makedirs(os.path.join(params.out_dir, params.job_name), exist_ok=True)
   if params.out_fn == "":
     params.out_fn = os.path.join(

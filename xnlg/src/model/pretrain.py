@@ -47,7 +47,7 @@ def read_txt_embeddings(path, params):
             if word in word2id:
                 logger.warning("Word \"%s\" found twice!" % word)
                 continue
-            if not vect.shape == (_emb_dim_file,):
+            if vect.shape != (_emb_dim_file,):
                 logger.warning("Invalid dimension (%i) for word \"%s\" in line %i."
                                % (vect.shape[0], word, i))
                 continue
@@ -73,7 +73,7 @@ def load_bin_embeddings(path, params):
     model = load_fasttext_model(path)
     assert model.get_dimension() == params.emb_dim
     words = model.get_labels()
-    logger.info("Loaded binary model from %s" % path)
+    logger.info(f"Loaded binary model from {path}")
 
     # compute new vocabulary / embeddings
     embeddings = np.concatenate([model.get_word_vector(w)[None] for w in words], 0)

@@ -28,7 +28,7 @@ def check_model_params(params):
     s = params.word_mask_keep_rand.split(',')
     assert len(s) == 3
     s = [float(x) for x in s]
-    assert all([0 <= x <= 1 for x in s]) and sum(s) == 1
+    assert all(0 <= x <= 1 for x in s) and sum(s) == 1
     params.word_mask = s[0]
     params.word_keep = s[1]
     params.word_rand = s[2]
@@ -53,7 +53,7 @@ def check_model_params(params):
     if params.asm:
         assert params.asm_div_value > 1
         s = params.asm_cutoffs.split(',')
-        assert all([x.isdigit() for x in s])
+        assert all(x.isdigit() for x in s)
         params.asm_cutoffs = [int(x) for x in s]
         assert params.max_vocab == -1 or params.asm_cutoffs[-1] < params.max_vocab
 
@@ -69,21 +69,32 @@ def check_model_params(params):
         params.mem_enc_positions = [(int(x[:-1]), 'after') if x[-1] == '+' else (int(x), 'in') for x in s_enc]
         params.mem_dec_positions = [(int(x[:-1]), 'after') if x[-1] == '+' else (int(x), 'in') for x in s_dec]
         assert len(params.mem_enc_positions) + len(params.mem_dec_positions) > 0
-        assert len(params.mem_enc_positions) == 0 or 0 <= min([x[0] for x in params.mem_enc_positions]) <= max([x[0] for x in params.mem_enc_positions]) <= params.n_layers - 1
-        assert len(params.mem_dec_positions) == 0 or 0 <= min([x[0] for x in params.mem_dec_positions]) <= max([x[0] for x in params.mem_dec_positions]) <= params.n_layers - 1
+        assert (
+            not params.mem_enc_positions
+            or 0
+            <= min(x[0] for x in params.mem_enc_positions)
+            <= max(x[0] for x in params.mem_enc_positions)
+            <= params.n_layers - 1
+        )
+        assert (
+            not params.mem_dec_positions
+            or 0
+            <= min(x[0] for x in params.mem_dec_positions)
+            <= max(x[0] for x in params.mem_dec_positions)
+            <= params.n_layers - 1
+        )
 
     # reload pretrained word embeddings
     if params.reload_emb != '':
         assert os.path.isfile(params.reload_emb)
 
-    # reload a pretrained model
     if params.reload_model != '':
         if params.encoder_only:
             assert os.path.isfile(params.reload_model)
         else:
             s = params.reload_model.split(',')
             assert len(s) == 2
-            assert all([x == '' or os.path.isfile(x) for x in s])
+            assert all(x == '' or os.path.isfile(x) for x in s)
 
 
 def set_pretrain_emb(model, dico, word2id, embeddings):
@@ -118,9 +129,9 @@ def build_model(params, dico):
 
         # reload a pretrained model
         if params.reload_model != '':
-            logger.info("Reloading model from %s ..." % params.reload_model)
+            logger.info(f"Reloading model from {params.reload_model} ...")
             reloaded = torch.load(params.reload_model, map_location=lambda storage, loc: storage.cuda(params.local_rank))['model']
-            if all([k.startswith('module.') for k in reloaded.keys()]):
+            if all(k.startswith('module.') for k in reloaded.keys()):
                 reloaded = {k[len('module.'):]: v for k, v in reloaded.items()}
 
             # # HACK to reload models with less layers
@@ -133,8 +144,11 @@ def build_model(params, dico):
 
             model.load_state_dict(reloaded, strict=False)
 
-        logger.info("Model: {}".format(model))
-        logger.info("Number of parameters (model): %i" % sum([p.numel() for p in model.parameters() if p.requires_grad]))
+        logger.info(f"Model: {model}")
+        logger.info(
+            "Number of parameters (model): %i"
+            % sum(p.numel() for p in model.parameters() if p.requires_grad)
+        )
 
         return model.cuda()
 
@@ -152,34 +166,40 @@ def build_model(params, dico):
         # reload a pretrained model
         if params.reload_model != '':
             enc_path, dec_path = params.reload_model.split(',')
-            assert not (enc_path == '' and dec_path == '')
+            assert enc_path != '' or dec_path != ''
 
             # reload encoder
             if enc_path != '':
-                logger.info("Reloading encoder from %s ..." % enc_path)
+                logger.info(f"Reloading encoder from {enc_path} ...")
                 enc_reload = torch.load(enc_path, map_location=lambda storage, loc: storage.cuda(params.local_rank))
                 enc_reload = enc_reload['model' if 'model' in enc_reload else 'encoder']
-                if all([k.startswith('module.') for k in enc_reload.keys()]):
+                if all(k.startswith('module.') for k in enc_reload.keys()):
                     enc_reload = {k[len('module.'):]: v for k, v in enc_reload.items()}
                 encoder.load_state_dict(enc_reload, strict=False)
 
             # reload decoder
             if dec_path != '':
-                logger.info("Reloading decoder from %s ..." % dec_path)
+                logger.info(f"Reloading decoder from {dec_path} ...")
                 dec_reload = torch.load(dec_path, map_location=lambda storage, loc: storage.cuda(params.local_rank))
                 dec_reload = dec_reload['model' if 'model' in dec_reload else 'decoder']
-                if all([k.startswith('module.') for k in dec_reload.keys()]):
+                if all(k.startswith('module.') for k in dec_reload.keys()):
                     dec_reload = {k[len('module.'):]: v for k, v in dec_reload.items()}
                 for i in range(params.n_layers):
                     for name in DECODER_ONLY_PARAMS:
                         if name % i not in dec_reload:
-                            logger.warning("Parameter %s not found." % (name % i))
+                            logger.warning(f"Parameter {name % i} not found.")
                             dec_reload[name % i] = decoder.state_dict()[name % i]
                 decoder.load_state_dict(dec_reload, strict=False)
 
-        logger.info("Encoder: {}".format(encoder))
-        logger.info("Decoder: {}".format(decoder))
-        logger.info("Number of parameters (encoder): %i" % sum([p.numel() for p in encoder.parameters() if p.requires_grad]))
-        logger.info("Number of parameters (decoder): %i" % sum([p.numel() for p in decoder.parameters() if p.requires_grad]))
+        logger.info(f"Encoder: {encoder}")
+        logger.info(f"Decoder: {decoder}")
+        logger.info(
+            "Number of parameters (encoder): %i"
+            % sum(p.numel() for p in encoder.parameters() if p.requires_grad)
+        )
+        logger.info(
+            "Number of parameters (decoder): %i"
+            % sum(p.numel() for p in decoder.parameters() if p.requires_grad)
+        )
 
         return encoder.cuda(), decoder.cuda()

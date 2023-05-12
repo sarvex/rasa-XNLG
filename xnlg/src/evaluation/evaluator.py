@@ -62,23 +62,25 @@ def eval_memory_usage(scores, name, mem_att, mem_size):
     mem_scores_u = mem_scores_u / mem_scores_u.sum()
 
     # store stats
-    scores['%s_mem_used' % name] = float(100 * (mem_scores_w != 0).sum() / len(mem_scores_w))
+    scores[f'{name}_mem_used'] = float(
+        100 * (mem_scores_w != 0).sum() / len(mem_scores_w)
+    )
 
-    scores['%s_mem_kl_w' % name] = float(kl_score(mem_scores_w))
-    scores['%s_mem_kl_u' % name] = float(kl_score(mem_scores_u))
+    scores[f'{name}_mem_kl_w'] = float(kl_score(mem_scores_w))
+    scores[f'{name}_mem_kl_u'] = float(kl_score(mem_scores_u))
 
-    scores['%s_mem_gini_w' % name] = float(gini_score(mem_scores_w))
-    scores['%s_mem_gini_u' % name] = float(gini_score(mem_scores_u))
+    scores[f'{name}_mem_gini_w'] = float(gini_score(mem_scores_w))
+    scores[f'{name}_mem_gini_u'] = float(gini_score(mem_scores_u))
 
     top50, top90, top99 = tops(mem_scores_w)
-    scores['%s_mem_top50_w' % name] = float(top50)
-    scores['%s_mem_top90_w' % name] = float(top90)
-    scores['%s_mem_top99_w' % name] = float(top99)
+    scores[f'{name}_mem_top50_w'] = float(top50)
+    scores[f'{name}_mem_top90_w'] = float(top90)
+    scores[f'{name}_mem_top99_w'] = float(top99)
 
     top50, top90, top99 = tops(mem_scores_u)
-    scores['%s_mem_top50_u' % name] = float(top50)
-    scores['%s_mem_top90_u' % name] = float(top90)
-    scores['%s_mem_top99_u' % name] = float(top99)
+    scores[f'{name}_mem_top50_u'] = float(top50)
+    scores[f'{name}_mem_top90_u'] = float(top90)
+    scores[f'{name}_mem_top99_u'] = float(top99)
 
 
 class Evaluator(object):
@@ -96,7 +98,7 @@ class Evaluator(object):
         # create directory to store hypotheses, and reference files for BLEU evaluation
         if self.params.is_master:
             params.hyp_path = os.path.join(params.dump_path, 'hypotheses')
-            subprocess.Popen('mkdir -p %s' % params.hyp_path, shell=True).wait()
+            subprocess.Popen(f'mkdir -p {params.hyp_path}', shell=True).wait()
             self.create_reference_files()
 
     def get_iterator(self, data_set, lang1, lang2=None, stream=False):
@@ -110,8 +112,55 @@ class Evaluator(object):
 
         # hacks to reduce evaluation time when using many languages
         if len(self.params.langs) > 30:
-            eval_lgs = set(["ar", "bg", "de", "el", "en", "es", "fr", "hi", "ru", "sw", "th", "tr", "ur", "vi", "zh", "ab", "ay", "bug", "ha", "ko", "ln", "min", "nds", "pap", "pt", "tg", "to", "udm", "uk", "zh_classical"])
-            eval_lgs = set(["ar", "bg", "de", "el", "en", "es", "fr", "hi", "ru", "sw", "th", "tr", "ur", "vi", "zh"])
+            eval_lgs = {
+                "ar",
+                "bg",
+                "de",
+                "el",
+                "en",
+                "es",
+                "fr",
+                "hi",
+                "ru",
+                "sw",
+                "th",
+                "tr",
+                "ur",
+                "vi",
+                "zh",
+                "ab",
+                "ay",
+                "bug",
+                "ha",
+                "ko",
+                "ln",
+                "min",
+                "nds",
+                "pap",
+                "pt",
+                "tg",
+                "to",
+                "udm",
+                "uk",
+                "zh_classical",
+            }
+            eval_lgs = {
+                "ar",
+                "bg",
+                "de",
+                "el",
+                "en",
+                "es",
+                "fr",
+                "hi",
+                "ru",
+                "sw",
+                "th",
+                "tr",
+                "ur",
+                "vi",
+                "zh",
+            }
             subsample = 10 if (data_set == 'test' or lang1 not in eval_lgs) else 5
             n_sentences = 600 if (data_set == 'test' or lang1 not in eval_lgs) else 1500
         elif len(self.params.langs) > 5:
@@ -240,15 +289,36 @@ class Evaluator(object):
                     eval_bleu = params.eval_bleu and params.is_master
                     self.evaluate_mt(scores, data_set, lang1, lang2, eval_bleu)
 
-                # report average metrics per language
-                _clm_mono = [l1 for (l1, l2) in params.clm_steps if l2 is None]
-                if len(_clm_mono) > 0:
-                    scores['%s_clm_ppl' % data_set] = np.mean([scores['%s_%s_clm_ppl' % (data_set, lang)] for lang in _clm_mono])
-                    scores['%s_clm_acc' % data_set] = np.mean([scores['%s_%s_clm_acc' % (data_set, lang)] for lang in _clm_mono])
-                _mlm_mono = [l1 for (l1, l2) in params.mlm_steps if l2 is None]
-                if len(_mlm_mono) > 0:
-                    scores['%s_mlm_ppl' % data_set] = np.mean([scores['%s_%s_mlm_ppl' % (data_set, lang)] for lang in _mlm_mono])
-                    scores['%s_mlm_acc' % data_set] = np.mean([scores['%s_%s_mlm_acc' % (data_set, lang)] for lang in _mlm_mono])
+                if _clm_mono := [
+                    l1 for (l1, l2) in params.clm_steps if l2 is None
+                ]:
+                    scores[f'{data_set}_clm_ppl'] = np.mean(
+                        [
+                            scores[f'{data_set}_{lang}_clm_ppl']
+                            for lang in _clm_mono
+                        ]
+                    )
+                    scores[f'{data_set}_clm_acc'] = np.mean(
+                        [
+                            scores[f'{data_set}_{lang}_clm_acc']
+                            for lang in _clm_mono
+                        ]
+                    )
+                if _mlm_mono := [
+                    l1 for (l1, l2) in params.mlm_steps if l2 is None
+                ]:
+                    scores[f'{data_set}_mlm_ppl'] = np.mean(
+                        [
+                            scores[f'{data_set}_{lang}_mlm_ppl']
+                            for lang in _mlm_mono
+                        ]
+                    )
+                    scores[f'{data_set}_mlm_acc'] = np.mean(
+                        [
+                            scores[f'{data_set}_{lang}_mlm_acc']
+                            for lang in _mlm_mono
+                        ]
+                    )
 
         return scores
 
@@ -315,15 +385,20 @@ class Evaluator(object):
         logger.info("Found %i words in %s. %i were predicted correctly." % (n_words, data_set, n_valid))
 
         # compute perplexity and prediction accuracy
-        ppl_name = '%s_%s_clm_ppl' % (data_set, l1l2)
-        acc_name = '%s_%s_clm_acc' % (data_set, l1l2)
+        ppl_name = f'{data_set}_{l1l2}_clm_ppl'
+        acc_name = f'{data_set}_{l1l2}_clm_acc'
         scores[ppl_name] = np.exp(xe_loss / n_words)
         scores[acc_name] = 100. * n_valid / n_words
 
         # compute memory usage
         if eval_memory:
             for mem_name, mem_att in all_mem_att.items():
-                eval_memory_usage(scores, '%s_%s_%s' % (data_set, l1l2, mem_name), mem_att, params.mem_size)
+                eval_memory_usage(
+                    scores,
+                    f'{data_set}_{l1l2}_{mem_name}',
+                    mem_att,
+                    params.mem_size,
+                )
 
     def evaluate_mlm(self, scores, data_set, lang1, lang2):
         """
@@ -384,15 +459,20 @@ class Evaluator(object):
                     all_mem_att[k].append((v.last_indices, v.last_scores))
 
         # compute perplexity and prediction accuracy
-        ppl_name = '%s_%s_mlm_ppl' % (data_set, l1l2)
-        acc_name = '%s_%s_mlm_acc' % (data_set, l1l2)
+        ppl_name = f'{data_set}_{l1l2}_mlm_ppl'
+        acc_name = f'{data_set}_{l1l2}_mlm_acc'
         scores[ppl_name] = np.exp(xe_loss / n_words) if n_words > 0 else 1e9
         scores[acc_name] = 100. * n_valid / n_words if n_words > 0 else 0.
 
         # compute memory usage
         if eval_memory:
             for mem_name, mem_att in all_mem_att.items():
-                eval_memory_usage(scores, '%s_%s_%s' % (data_set, l1l2, mem_name), mem_att, params.mem_size)
+                eval_memory_usage(
+                    scores,
+                    f'{data_set}_{l1l2}_{mem_name}',
+                    mem_att,
+                    params.mem_size,
+                )
 
 
 class SingleEvaluator(Evaluator):
@@ -497,13 +577,18 @@ class EncDecEvaluator(Evaluator):
                 hypothesis.extend(convert_to_text(generated, lengths, self.dico, params))
 
         # compute perplexity and prediction accuracy
-        scores['%s_%s-%s_mt_ppl' % (data_set, lang1, lang2)] = np.exp(xe_loss / n_words)
-        scores['%s_%s-%s_mt_acc' % (data_set, lang1, lang2)] = 100. * n_valid / n_words
+        scores[f'{data_set}_{lang1}-{lang2}_mt_ppl'] = np.exp(xe_loss / n_words)
+        scores[f'{data_set}_{lang1}-{lang2}_mt_acc'] = 100. * n_valid / n_words
 
         # compute memory usage
         if eval_memory:
             for mem_name, mem_att in all_mem_att.items():
-                eval_memory_usage(scores, '%s_%s-%s_%s' % (data_set, lang1, lang2, mem_name), mem_att, params.mem_size)
+                eval_memory_usage(
+                    scores,
+                    f'{data_set}_{lang1}-{lang2}_{mem_name}',
+                    mem_att,
+                    params.mem_size,
+                )
 
         # compute BLEU
         if eval_bleu:
@@ -521,7 +606,7 @@ class EncDecEvaluator(Evaluator):
             # evaluate BLEU score
             bleu = eval_moses_bleu(ref_path, hyp_path)
             logger.info("BLEU %s %s : %f" % (hyp_path, ref_path, bleu))
-            scores['%s_%s-%s_mt_bleu' % (data_set, lang1, lang2)] = bleu
+            scores[f'{data_set}_{lang1}-{lang2}_mt_bleu'] = bleu
 
 
 def convert_to_text(batch, lengths, dico, params):
@@ -553,13 +638,12 @@ def eval_moses_bleu(ref, hyp):
     evaluate the BLEU score using Moses scripts.
     """
     assert os.path.isfile(hyp)
-    assert os.path.isfile(ref) or os.path.isfile(ref + '0')
+    assert os.path.isfile(ref) or os.path.isfile(f'{ref}0')
     assert os.path.isfile(BLEU_SCRIPT_PATH)
-    command = BLEU_SCRIPT_PATH + ' %s < %s'
+    command = f'{BLEU_SCRIPT_PATH} %s < %s'
     p = subprocess.Popen(command % (ref, hyp), stdout=subprocess.PIPE, shell=True)
     result = p.communicate()[0].decode("utf-8")
     if result.startswith('BLEU'):
         return float(result[7:result.index(',')])
-    else:
-        logger.warning('Impossible to parse BLEU score! "%s"' % result)
-        return -1
+    logger.warning(f'Impossible to parse BLEU score! "{result}"')
+    return -1

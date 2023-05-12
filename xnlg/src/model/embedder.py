@@ -69,7 +69,7 @@ class SentenceEmbedder(object):
         Wrapper on top of the different sentence embedders.
         Returns sequence-wise or single-vector sentence representations.
         """
-        self.pretrain_params = {k: v for k, v in pretrain_params.__dict__.items()}
+        self.pretrain_params = dict(pretrain_params.__dict__.items())
         self.model = model
         self.dico = dico
         self.n_layers = model.n_layers
@@ -119,17 +119,17 @@ class SentenceEmbedder(object):
                 logger.info("Adding embedding parameters to optimizer")
             # positional embeddings
             if self.pretrain_params['sinusoidal_embeddings'] is False \
-                and not params.fixed_position_embeddings:
+                    and not params.fixed_position_embeddings:
                 parameters += self.model.position_embeddings.parameters()
                 logger.info("Adding positional embedding parameters to optimizer")
             # language embeddings
             if hasattr(self.model, 'lang_embeddings') and \
-                not params.fixed_lang_embeddings:
+                    not params.fixed_lang_embeddings:
                 parameters += self.model.lang_embeddings.parameters()
                 logger.info("Adding language embedding parameters to optimizer")
             # task embeddings
             if hasattr(self.model, "task_embeddings") and \
-                not params.fixed_task_embeddings:
+                    not params.fixed_task_embeddings:
                 parameters += self.model.task_embeddings.parameters()
                 logger.info("Adding task embedding parameters to optimizer")
             parameters += self.model.layer_norm_emb.parameters()
@@ -139,9 +139,12 @@ class SentenceEmbedder(object):
             parameters += self.model.layer_norm1[l].parameters()
             parameters += self.model.ffns[l].parameters()
             parameters += self.model.layer_norm2[l].parameters()
-            logger.info("Adding layer-%s parameters to optimizer" % (l + 1))
+            logger.info(f"Adding layer-{l + 1} parameters to optimizer")
 
-        logger.info("Optimizing on %i Transformer elements." % sum([p.nelement() for p in parameters]))
+        logger.info(
+            "Optimizing on %i Transformer elements."
+            % sum(p.nelement() for p in parameters)
+        )
 
         return parameters
 

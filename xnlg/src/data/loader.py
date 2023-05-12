@@ -64,7 +64,7 @@ def load_binarized(path, params):
             assert params.split_data is False
             path = split_path
     assert os.path.isfile(path), path
-    logger.info("Loading data from %s ..." % path)
+    logger.info(f"Loading data from {path} ...")
     data = torch.load(path)
     data = process_binarized(data, params)
     return data
@@ -110,7 +110,7 @@ def load_mono_data(params, data):
 
     for lang in params.mono_dataset.keys():
 
-        logger.info('============ Monolingual data (%s)' % lang)
+        logger.info(f'============ Monolingual data ({lang})')
 
         assert lang in params.langs and lang not in data['mono']
         data['mono'][lang] = {}
@@ -172,7 +172,7 @@ def load_para_data(params, data):
 
     for src, tgt in params.para_dataset.keys():
 
-        logger.info('============ Parallel data (%s-%s)' % (src, tgt))
+        logger.info(f'============ Parallel data ({src}-{tgt})')
 
         assert (src, tgt) not in data['para']
         data['para'][(src, tgt)] = {}
@@ -236,56 +236,72 @@ def check_data_params(params):
     params.langs = params.lgs.split('-') if params.lgs != 'debug' else ['en']
     assert len(params.langs) == len(set(params.langs)) >= 1
     # assert sorted(params.langs) == params.langs
-    params.id2lang = {k: v for k, v in enumerate(sorted(params.langs))}
+    params.id2lang = dict(enumerate(sorted(params.langs)))
     params.lang2id = {k: v for v, k in params.id2lang.items()}
     params.n_langs = len(params.langs)
 
     # CLM steps
     clm_steps = [s.split('-') for s in params.clm_steps.split(',') if len(s) > 0]
     params.clm_steps = [(s[0], None) if len(s) == 1 else tuple(s) for s in clm_steps]
-    assert all([(l1 in params.langs) and (l2 in params.langs or l2 is None) for l1, l2 in params.clm_steps])
+    assert all(
+        (l1 in params.langs) and (l2 in params.langs or l2 is None)
+        for l1, l2 in params.clm_steps
+    )
     assert len(params.clm_steps) == len(set(params.clm_steps))
 
     # MLM / TLM steps
     mlm_steps = [s.split('-') for s in params.mlm_steps.split(',') if len(s) > 0]
     params.mlm_steps = [(s[0], None) if len(s) == 1 else tuple(s) for s in mlm_steps]
-    assert all([(l1 in params.langs) and (l2 in params.langs or l2 is None) for l1, l2 in params.mlm_steps])
+    assert all(
+        (l1 in params.langs) and (l2 in params.langs or l2 is None)
+        for l1, l2 in params.mlm_steps
+    )
     assert len(params.mlm_steps) == len(set(params.mlm_steps))
 
     # S2SLM steps
     s2slm_steps = [s.split('-') for s in params.s2slm_steps.split(',') if len(s) > 0]
     params.s2slm_steps = [(s[0], None) if len(s) == 1 else tuple(s) for s in s2slm_steps]
-    assert all([(l1 in params.langs) and (l2 in params.langs or l2 is None) for l1, l2 in params.s2slm_steps])
+    assert all(
+        (l1 in params.langs) and (l2 in params.langs or l2 is None)
+        for l1, l2 in params.s2slm_steps
+    )
     assert len(params.s2slm_steps) == len(set(params.s2slm_steps))
 
     # parallel classification steps
     params.pc_steps = [tuple(s.split('-')) for s in params.pc_steps.split(',') if len(s) > 0]
-    assert all([len(x) == 2 for x in params.pc_steps])
-    assert all([l1 in params.langs and l2 in params.langs for l1, l2 in params.pc_steps])
-    assert all([l1 != l2 for l1, l2 in params.pc_steps])
+    assert all(len(x) == 2 for x in params.pc_steps)
+    assert all(
+        l1 in params.langs and l2 in params.langs for l1, l2 in params.pc_steps
+    )
+    assert all(l1 != l2 for l1, l2 in params.pc_steps)
     assert len(params.pc_steps) == len(set(params.pc_steps))
 
     # machine translation steps
     params.mt_steps = [tuple(s.split('-')) for s in params.mt_steps.split(',') if len(s) > 0]
-    assert all([len(x) == 2 for x in params.mt_steps])
-    assert all([l1 in params.langs and l2 in params.langs for l1, l2 in params.mt_steps])
-    assert all([l1 != l2 for l1, l2 in params.mt_steps])
+    assert all(len(x) == 2 for x in params.mt_steps)
+    assert all(
+        l1 in params.langs and l2 in params.langs for l1, l2 in params.mt_steps
+    )
+    assert all(l1 != l2 for l1, l2 in params.mt_steps)
     assert len(params.mt_steps) == len(set(params.mt_steps))
     # assert len(params.mt_steps) == 0 or not params.encoder_only
 
     # denoising auto-encoder steps
     params.ae_steps = [s for s in params.ae_steps.split(',') if len(s) > 0]
-    assert all([lang in params.langs for lang in params.ae_steps])
+    assert all(lang in params.langs for lang in params.ae_steps)
     assert len(params.ae_steps) == len(set(params.ae_steps))
     # assert len(params.ae_steps) == 0 or not params.encoder_only
 
     # back-translation steps
     params.bt_steps = [tuple(s.split('-')) for s in params.bt_steps.split(',') if len(s) > 0]
-    assert all([len(x) == 3 for x in params.bt_steps])
-    assert all([l1 in params.langs and l2 in params.langs and l3 in params.langs for l1, l2, l3 in params.bt_steps])
-    assert all([l1 == l3 and l1 != l2 for l1, l2, l3 in params.bt_steps])
+    assert all(len(x) == 3 for x in params.bt_steps)
+    assert all(
+        l1 in params.langs and l2 in params.langs and l3 in params.langs
+        for l1, l2, l3 in params.bt_steps
+    )
+    assert all(l1 == l3 and l1 != l2 for l1, l2, l3 in params.bt_steps)
     assert len(params.bt_steps) == len(set(params.bt_steps))
-    assert len(params.bt_steps) == 0 or not params.encoder_only
+    assert not params.bt_steps or not params.encoder_only
     params.bt_src_langs = [l1 for l1, _, _ in params.bt_steps]
 
     # check monolingual datasets
@@ -299,23 +315,41 @@ def check_data_params(params):
     # NOTE swap lang splt
     params.mono_dataset = {
         lang: {
-            splt: os.path.join(params.data_path, '%s.%s.pth' % (lang, splt))
+            splt: os.path.join(params.data_path, f'{lang}.{splt}.pth')
             for splt in ['train', 'valid', 'test']
-        } for lang in params.langs if lang in required_mono
+        }
+        for lang in params.langs
+        if lang in required_mono
     }
-    assert all([all([os.path.isfile(p) for p in paths.values()]) for paths in params.mono_dataset.values()]), params.mono_dataset
+    assert all(
+        all(os.path.isfile(p) for p in paths.values())
+        for paths in params.mono_dataset.values()
+    ), params.mono_dataset
 
     # check parallel datasets
     required_para_train = set(params.clm_steps + params.mlm_steps + params.pc_steps + params.mt_steps + params.s2slm_steps)
-    required_para = required_para_train | set([(l2, l3) for _, l2, l3 in params.bt_steps])
+    required_para = required_para_train | {
+        (l2, l3) for _, l2, l3 in params.bt_steps
+    }
     params.para_dataset = {
         (src, tgt): {
-            splt: (os.path.join(params.data_path, '%s.%s-%s.%s.pth' % (splt, src, tgt, src)),
-                   os.path.join(params.data_path, '%s.%s-%s.%s.pth' % (splt, src, tgt, tgt)))
+            splt: (
+                os.path.join(
+                    params.data_path, f'{splt}.{src}-{tgt}.{src}.pth'
+                ),
+                os.path.join(
+                    params.data_path, f'{splt}.{src}-{tgt}.{tgt}.pth'
+                ),
+            )
             for splt in ['train', 'valid', 'test']
-            if splt != 'train' or (src, tgt) in required_para_train or (tgt, src) in required_para_train
-        } for src in params.langs for tgt in params.langs
-        if src < tgt and ((src, tgt) in required_para or (tgt, src) in required_para)
+            if splt != 'train'
+            or (src, tgt) in required_para_train
+            or (tgt, src) in required_para_train
+        }
+        for src in params.langs
+        for tgt in params.langs
+        if src < tgt
+        and ((src, tgt) in required_para or (tgt, src) in required_para)
     }
     for paths in params.para_dataset.values():
         for p1, p2 in paths.values():
@@ -323,7 +357,13 @@ def check_data_params(params):
                 logger.error(f"{p1} not found")
             if not os.path.isfile(p2):
                 logger.error(f"{p2} not found")
-    assert all([all([os.path.isfile(p1) and os.path.isfile(p2) for p1, p2 in paths.values()]) for paths in params.para_dataset.values()])
+    assert all(
+        all(
+            os.path.isfile(p1) and os.path.isfile(p2)
+            for p1, p2 in paths.values()
+        )
+        for paths in params.para_dataset.values()
+    )
 
     # check that we can evaluate on BLEU
     assert params.eval_bleu is False or len(params.mt_steps + params.bt_steps) > 0
@@ -354,7 +394,11 @@ def load_data(params):
     # parallel data summary
     for (src, tgt), v in data['para'].items():
         for data_set in v.keys():
-            logger.info('{: <18} - {: >5} - {: >12}:{: >10}'.format('Parallel data', data_set, '%s-%s' % (src, tgt), len(v[data_set])))
+            logger.info(
+                '{: <18} - {: >5} - {: >12}:{: >10}'.format(
+                    'Parallel data', data_set, f'{src}-{tgt}', len(v[data_set])
+                )
+            )
 
     logger.info("")
     return data

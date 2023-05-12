@@ -25,24 +25,22 @@ def test_rouge(cand, ref):
 
     cnt = len(candidates)
     current_time = time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())
-    tmp_dir = os.path.join(temp_dir, "rouge-tmp-{}".format(current_time))
+    tmp_dir = os.path.join(temp_dir, f"rouge-tmp-{current_time}")
     if not os.path.isdir(tmp_dir):
         os.mkdir(tmp_dir)
-        os.mkdir(tmp_dir + "/candidate")
-        os.mkdir(tmp_dir + "/reference")
+        os.mkdir(f"{tmp_dir}/candidate")
+        os.mkdir(f"{tmp_dir}/reference")
     try:
         for i in range(cnt):
             if len(references[i]) < 1:
                 continue
-            with open(tmp_dir + "/candidate/cand.{}.txt".format(i), "w",
-                      encoding="utf-8") as f:
+            with open(f"{tmp_dir}/candidate/cand.{i}.txt", "w", encoding="utf-8") as f:
                 f.write(candidates[i])
-            with open(tmp_dir + "/reference/ref.{}.txt".format(i), "w",
-                      encoding="utf-8") as f:
+            with open(f"{tmp_dir}/reference/ref.{i}.txt", "w", encoding="utf-8") as f:
                 f.write(references[i])
         r = Rouge155(temp_dir=temp_dir)
-        r.model_dir = tmp_dir + "/reference/"
-        r.system_dir = tmp_dir + "/candidate/"
+        r.model_dir = f"{tmp_dir}/reference/"
+        r.system_dir = f"{tmp_dir}/candidate/"
         r.model_filename_pattern = 'ref.#ID#.txt'
         r.system_filename_pattern = r'cand.(\d+).txt'
         rouge_results = r.convert_and_evaluate()
@@ -65,10 +63,7 @@ def rouge_results_to_str(results_dict):
     )
 
 def _is_digit(w):
-    for ch in w:
-        if not(ch.isdigit() or ch == ','):
-            return False
-    return True
+    return all((ch.isdigit() or ch == ',') for ch in w)
 
 def fix_tokenization(text):
     input_tokens = text.split()
@@ -96,7 +91,7 @@ def fix_tokenization(text):
             output_tokens.append("n't")
             i += 2
         elif tok == "'" and i < len(input_tokens) - 1 and input_tokens[i + 1] in ("s", "d", "ll"):
-            output_tokens.append("'"+input_tokens[i + 1])
+            output_tokens.append(f"'{input_tokens[i + 1]}")
             i += 2
         elif tok == "'":
             if has_left_single_quote:
@@ -110,11 +105,11 @@ def fix_tokenization(text):
             i += 3
         elif tok == "," and len(output_tokens) > 0 and _is_digit(output_tokens[-1]) and i < len(input_tokens) - 1 and _is_digit(input_tokens[i + 1]):
             # $ 3 , 000 -> $ 3,000
-            output_tokens[-1] += ','+input_tokens[i + 1]
+            output_tokens[-1] += f',{input_tokens[i + 1]}'
             i += 2
         elif tok == "." and len(output_tokens) > 0 and output_tokens[-1].isdigit() and i < len(input_tokens) - 1 and input_tokens[i + 1].isdigit():
             # 3 . 03 -> $ 3.03
-            output_tokens[-1] += '.'+input_tokens[i + 1]
+            output_tokens[-1] += f'.{input_tokens[i + 1]}'
             i += 2
         elif tok == "." and len(output_tokens) > 0 and len(output_tokens[-1]) == 1 and output_tokens[-1].isupper() and i < len(input_tokens) - 2 and len(input_tokens[i + 1]) == 1 and input_tokens[i + 1].isupper() and input_tokens[i + 2] == '.':
             # U . N . -> U.N.
@@ -130,7 +125,7 @@ def fix_tokenization(text):
             if i < len(input_tokens) - 1 and input_tokens[i + 1] == "-":
                 output_tokens.append("--")
                 i += 2
-            elif i == len(input_tokens) - 1 or i == 0:
+            elif i in [len(input_tokens) - 1, 0]:
                 output_tokens.append("-")
                 i += 1
             elif output_tokens[-1] not in string.punctuation and input_tokens[i + 1][0] not in string.punctuation:
@@ -173,11 +168,10 @@ def process_eval(gold, eval_fn, trunc_len=0, use_rouge=False, zh=False):
     pred_list = []
     with open(eval_fn, "r", encoding="utf-8") as f_in:
         for l in f_in:
-            buf = []
             # sentence = fix_tokenization(l.strip()).replace('1', '#')
             # print(sentence)
             sentence = l
-            buf.append(sentence)
+            buf = [sentence]
             if trunc_len > 0:
                 num_left = trunc_len
                 trunc_list = []
@@ -192,17 +186,14 @@ def process_eval(gold, eval_fn, trunc_len=0, use_rouge=False, zh=False):
                 trunc_list = buf
             line = "\n".join(trunc_list)
             pred_list.append(line)
-    
+
     if zh:
         pred_list_zh = []
         for line in pred_list:
             line = "".join(line.split(" "))
             zh_line = []
             for c in line:
-                if c in zh_dict:
-                    idx = zh_dict[c]
-                else:
-                    idx = "U"
+                idx = zh_dict[c] if c in zh_dict else "U"
                 zh_line.append(str(idx))
             pred_list_zh.append(" ".join(zh_line))
 
@@ -210,11 +201,11 @@ def process_eval(gold, eval_fn, trunc_len=0, use_rouge=False, zh=False):
         print(gold_list[0])
         gold_list = gold_list_zh
         pred_list = pred_list_zh
-                
+
 
     # rouge scores
     assert len(pred_list) == len(gold_list)
-    
+
     print(pred_list[0])
     print(gold_list[0])
 

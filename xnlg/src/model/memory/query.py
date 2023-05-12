@@ -74,9 +74,7 @@ class GroupedLinear(nn.Module):
         return self.layer(input.unsqueeze(2)).squeeze(2)
 
     def extra_repr(self):
-        return 'in_features={}, out_features={}, groups={}, bias={}'.format(
-            self.in_features, self.out_features, self.groups, self.bias is not None
-        )
+        return f'in_features={self.in_features}, out_features={self.out_features}, groups={self.groups}, bias={self.bias is not None}'
 
 
 class BottleneckResidualConv2d(nn.Module):

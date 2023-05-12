@@ -4,8 +4,7 @@ import sys
 def split_words(words):
   ret = []
   for word in words:
-    for c in word:
-      ret.append(c)
+    ret.extend(iter(word))
   return ret
 
 
@@ -15,4 +14,4 @@ if __name__ == "__main__":
     line = line.strip()
     words = line.split(" ")
     res = " ".join(split_words(words))
-    print(u"%s" % res)  
+    print(f"{res}")  

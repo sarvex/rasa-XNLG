@@ -64,7 +64,7 @@ class XSumm(object):
 
     for lang, sz in zip(XSumm_LANGS, decode_vocab_sizes):
       
-      fn = os.path.join(params.vocab_path, lang + ".vocab")
+      fn = os.path.join(params.vocab_path, f"{lang}.vocab")
       assert os.path.isfile(fn), fn
 
       mask = torch.ByteTensor(n_words)
@@ -81,7 +81,7 @@ class XSumm(object):
             # logger.warn("Token %s not in dico" % tok)
             count += 1
           else: mask[dico.word2id[tok]] = 1
-      
+
       # mask[dico.word2id["<@@"]] = 0
       logger.warn("%d tokens not in dico" % count)
       self.vocab_mask[lang] = mask
@@ -117,17 +117,17 @@ class XSumm(object):
     if type(lang) == str:
       if lang in XSumm_LANGS:
         return (lang, lang)
-      else:
-        lang1, lang2 = lang.split("2")
-        assert lang1 in XSumm_LANGS
-        assert lang2 in XSumm_LANGS
-        return (lang1, lang2)
+      lang1, lang2 = lang.split("2")
+      assert lang1 in XSumm_LANGS
+      assert lang2 in XSumm_LANGS
+      return (lang1, lang2)
 
   def get_iterator(self, splt, x_lang, y_lang):
     x_lang = self._parse_lang(x_lang)
     y_lang = self._parse_lang(y_lang)
-    logger.info("Getting iterator -- x_lang: (%s, %s), y_lang: (%s, %s) split:%s" % (
-      x_lang[0], x_lang[1], y_lang[0], y_lang[1], splt))
+    logger.info(
+        f"Getting iterator -- x_lang: ({x_lang[0]}, {x_lang[1]}), y_lang: ({y_lang[0]}, {y_lang[1]}) split:{splt}"
+    )
     return self.get_or_load_data(x_lang, y_lang, splt).get_iterator(
       shuffle=(splt == 'train'),
       group_by_size=self.params.group_by_size,
@@ -147,8 +147,7 @@ class XSumm(object):
   
   def lang2str(self, lang):
     lang1, lang2 = lang
-    if lang1 == lang2: return lang1
-    return "%s-%s" % (lang1, lang2)
+    return lang1 if lang1 == lang2 else f"{lang1}-{lang2}"
   
   def get_or_load_data(self, x_lang, y_lang, splt):
     params = self.params
@@ -159,13 +158,13 @@ class XSumm(object):
       if splt in self.data[lang]: return self.data[lang][splt]
     else:
       self.data[lang] = {}
-    
+
     dpath = os.path.join(params.data_path, "eval", params.ds_name)
 
-    x = load_binarized(os.path.join(dpath, "%s.x.%s.pth" % (
-      splt, self.lang2str(x_lang))), params)
-    y = load_binarized(os.path.join(dpath, "%s.y.%s.pth" % (
-      splt, self.lang2str(y_lang))), params)
+    x = load_binarized(
+        os.path.join(dpath, f"{splt}.x.{self.lang2str(x_lang)}.pth"), params)
+    y = load_binarized(
+        os.path.join(dpath, f"{splt}.y.{self.lang2str(y_lang)}.pth"), params)
     data["dico"] = data.get("dico", x["dico"])
     set_dico_parameters(params, data, x["dico"])
     set_dico_parameters(params, data, y["dico"])
@@ -189,13 +188,13 @@ class XSumm(object):
     eval_directions = [d.split("-") for d in params.eval_directions.split(",")]
 
     self.data = {}
-  
+
     self.encoder.cuda()
     self.decoder.cuda()
     parameters = []
     if params.train_layers == "all":
-      parameters.extend([_ for _ in self.encoder.parameters()])
-      parameters.extend([_ for _ in self.decoder.parameters()])
+      parameters.extend(list(self.encoder.parameters()))
+      parameters.extend(list(self.decoder.parameters()))
     elif params.train_layers == "decoder":
       parameters = self.decoder.parameters()
     elif params.train_layers == "encoder":
@@ -208,7 +207,7 @@ class XSumm(object):
     if self.params.decode_with_vocab: self.setup_vocab_mask(self.dico)
 
     self.best_scores = defaultdict(float)
-    
+
     for epoch in range(params.n_epochs):
       self.epoch = epoch
       logger.info("XSumm - Training epoch %d ..." % epoch)
@@ -291,7 +290,7 @@ class XSumm(object):
 
     for direction in eval_directions:
       x_lang, y_lang = direction
-      logger.info("Evaluating %s-%s-xsumm on %s set" % (x_lang, y_lang, split))
+      logger.info(f"Evaluating {x_lang}-{y_lang}-xsumm on {split} set")
 
       X, Y = [], []
       x_lang_id = params.lang2id[x_lang[-2:]]
@@ -319,7 +318,7 @@ class XSumm(object):
               encoded, len_x, y_lang_id, beam_size=params.beam_size,
               length_penalty=0.9, early_stopping=False,
               max_len=params.max_dec_len, vocab_mask=vocab_mask)
-      
+
         for j in range(decoded.size(1)):
           sent = decoded[:, j]
           delimiters = (sent == params.eos_index).nonzero().view(-1)
@@ -336,7 +335,7 @@ class XSumm(object):
             x_toks = [dico[x_sent[k].item()] for k in range(len(x_sent))]
             x_words = tokens2words(x_toks)
             X.append(x_words)
-      
+
       logger.info("%d res %d ref" % (len(Y), len(self.references[split][y_lang])))
       for i in range(5):
         logger.info("%d X: %s\nGenerated: %s\nReference: %s\n" % (
@@ -346,11 +345,10 @@ class XSumm(object):
 
       direction_str = "-".join(direction)
 
-      if save:
-        if eval_res["Bleu_4"] > best_scores[direction_str]:
-          logger.info("New best Bleu_4 score: %.5f! Saving model..." % eval_res["Bleu_4"])
-          best_scores[direction_str] = eval_res["Bleu_4"]
-          self.save("best_%s_Bleu_4" % direction_str)
+      if save and eval_res["Bleu_4"] > best_scores[direction_str]:
+        logger.info("New best Bleu_4 score: %.5f! Saving model..." % eval_res["Bleu_4"])
+        best_scores[direction_str] = eval_res["Bleu_4"]
+        self.save(f"best_{direction_str}_Bleu_4")
 
       logger.info("XSumm - %s - Epoch %d - Best BLEU-4: %.5f - scores: %s" % (
         direction_str, self.epoch, best_scores[direction_str], eval_res))
@@ -366,19 +364,17 @@ class XSumm(object):
       #   self.save("best_%s_rouge-l" % direction_str)
 
   def save(self, name):
-    path = os.path.join(self.params.dump_path, "%s.pth" % name)
-    logger.info("Saving %s to %s ..." % (name, path))
+    path = os.path.join(self.params.dump_path, f"{name}.pth")
+    logger.info(f"Saving {name} to {path} ...")
     data = {
-      "epoch": getattr(self, "epoch", 0),
-      "encoder": self.encoder.state_dict(),
-      "decoder": self.decoder.state_dict(),
-      "enc_params": {
-        k: v for k, v in self.params.encoder_model_params.__dict__.items()},
-      "dec_params": {
-        k: v for k, v in self.params.decoder_model_params.__dict__.items()},
-      "dico_id2word": self.dico.id2word,
-      "dico_word2id": self.dico.word2id,
-      "dico_counts": self.dico.counts,
-      "params": {k: v for k, v in self.params.__dict__.items()}
+        "epoch": getattr(self, "epoch", 0),
+        "encoder": self.encoder.state_dict(),
+        "decoder": self.decoder.state_dict(),
+        "enc_params": dict(self.params.encoder_model_params.__dict__.items()),
+        "dec_params": dict(self.params.decoder_model_params.__dict__.items()),
+        "dico_id2word": self.dico.id2word,
+        "dico_word2id": self.dico.word2id,
+        "dico_counts": self.dico.counts,
+        "params": dict(self.params.__dict__.items()),
     }
     torch.save(data, path)

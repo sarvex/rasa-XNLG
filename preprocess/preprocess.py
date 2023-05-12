@@ -28,7 +28,7 @@ def preprocess(voc_path, txt_path):
 
     logger = create_logger(None, 0)
 
-    bin_path = txt_path + ".pth"
+    bin_path = f"{txt_path}.pth"
 
     dico = Dictionary.read_vocab(voc_path)
     logger.info("")

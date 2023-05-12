@@ -74,7 +74,6 @@ class HashingMemory(nn.Module):
         # self.values = nn.Embedding(self.size, self.v_dim, sparse=params.mem_sparse)
         self.values = nn.EmbeddingBag(self.size, self.v_dim, mode='sum', sparse=params.mem_sparse)
 
-        # optionally use the same values for all memories
         if params.mem_share_values:
             if HashingMemory.VALUES is None:
                 HashingMemory.VALUES = self.values.weight
@@ -123,7 +122,10 @@ class HashingMemory(nn.Module):
 
         # shuffle indices for different heads
         if self.shuffle_indices:
-            head_permutations = [torch.randperm(self.n_indices).unsqueeze(0) for i in range(self.heads)]
+            head_permutations = [
+                torch.randperm(self.n_indices).unsqueeze(0)
+                for _ in range(self.heads)
+            ]
             self.register_buffer('head_permutations', torch.cat(head_permutations, 0))
 
         # do not learn the query network
@@ -201,9 +203,8 @@ class HashingMemory(nn.Module):
         if self.input2d:
             output = output.view(n_images, width, height, self.v_dim)             # (n_images, width, height, v_dim)
             output = output.transpose(1, 3)                                       # (n_images, v_dim, height, width)
-        else:
-            if len(prefix_shape) >= 2:
-                output = output.view(prefix_shape + (self.v_dim,))                # (..., v_dim)
+        elif len(prefix_shape) >= 2:
+            output = output.view(prefix_shape + (self.v_dim,))                # (..., v_dim)
 
         # store indices / scores (eval mode only - for usage statistics)
         if not self.training and HashingMemory.EVAL_MEMORY:
@@ -340,7 +341,7 @@ class HashingMemory(nn.Module):
 
         # even number of key dimensions for product quantization
         assert params.mem_k_dim >= 2
-        assert params.mem_product_quantization is False or params.mem_k_dim % 2 == 0
+        assert not params.mem_product_quantization or params.mem_k_dim % 2 == 0
 
         # memory type
         assert params.mem_keys_type in ['binary', 'gaussian', 'uniform']
@@ -424,14 +425,30 @@ class HashingMemoryFlat(HashingMemory):
         # random keys from Gaussian or uniform distributions
         if self.keys_type in ['gaussian', 'uniform']:
             init = get_gaussian_keys if self.keys_type == 'gaussian' else get_uniform_keys
-            if self.use_different_keys:
-                keys = torch.from_numpy(np.array([
-                    init(self.n_indices, self.k_dim, self.keys_normalized_init, seed=i)
-                    for i in range(self.heads)
-                ])).view(self.heads, self.n_indices, self.k_dim)
-            else:
-                keys = torch.from_numpy(init(self.n_indices, self.k_dim, self.keys_normalized_init, seed=0))
-
+            keys = (
+                torch.from_numpy(
+                    np.array(
+                        [
+                            init(
+                                self.n_indices,
+                                self.k_dim,
+                                self.keys_normalized_init,
+                                seed=i,
+                            )
+                            for i in range(self.heads)
+                        ]
+                    )
+                ).view(self.heads, self.n_indices, self.k_dim)
+                if self.use_different_keys
+                else torch.from_numpy(
+                    init(
+                        self.n_indices,
+                        self.k_dim,
+                        self.keys_normalized_init,
+                        seed=0,
+                    )
+                )
+            )
         # learned or fixed keys
         if self.learn_keys:
             self.keys = nn.Parameter(keys)
@@ -495,16 +512,15 @@ class HashingMemoryFlat(HashingMemory):
         assert query.dim() == 2 and query.size(1) == self.k_dim
         if self.use_different_keys is False:
             return self._get_indices(query, knn, self.keys)
-        else:
-            bs = len(query)
-            query = query.view(-1, self.heads, self.k_dim)
-            outputs = [
-                self._get_indices(query[:, i], knn, self.keys[i])
-                for i in range(self.heads)
-            ]
-            scores = torch.cat([s.unsqueeze(1) for s, _ in outputs], 1).view(bs, knn)
-            indices = torch.cat([idx.unsqueeze(1) for _, idx in outputs], 1).view(bs, knn)
-            return scores, indices
+        bs = len(query)
+        query = query.view(-1, self.heads, self.k_dim)
+        outputs = [
+            self._get_indices(query[:, i], knn, self.keys[i])
+            for i in range(self.heads)
+        ]
+        scores = torch.cat([s.unsqueeze(1) for s, _ in outputs], 1).view(bs, knn)
+        indices = torch.cat([idx.unsqueeze(1) for _, idx in outputs], 1).view(bs, knn)
+        return scores, indices
 
 
 class HashingMemoryProduct(HashingMemory):
@@ -536,15 +552,26 @@ class HashingMemoryProduct(HashingMemory):
         # random keys from Gaussian or uniform distributions
         if self.keys_type in ['gaussian', 'uniform']:
             init = get_gaussian_keys if self.keys_type == 'gaussian' else get_uniform_keys
-            if self.use_different_keys:
-                keys = torch.from_numpy(np.array([
-                    init(n_keys, half, self.keys_normalized_init, seed=(2 * i + j))
-                    for i in range(self.heads)
-                    for j in range(2)
-                ])).view(self.heads, 2, n_keys, half)
-            else:
-                keys = torch.from_numpy(init(n_keys, half, self.keys_normalized_init, seed=0))
-
+            keys = (
+                torch.from_numpy(
+                    np.array(
+                        [
+                            init(
+                                n_keys,
+                                half,
+                                self.keys_normalized_init,
+                                seed=(2 * i + j),
+                            )
+                            for i in range(self.heads)
+                            for j in range(2)
+                        ]
+                    )
+                ).view(self.heads, 2, n_keys, half)
+                if self.use_different_keys
+                else torch.from_numpy(
+                    init(n_keys, half, self.keys_normalized_init, seed=0)
+                )
+            )
         return keys
 
     def init_keys(self):
@@ -612,16 +639,15 @@ class HashingMemoryProduct(HashingMemory):
         assert query.dim() == 2 and query.size(1) == self.k_dim
         if self.use_different_keys is False:
             return self._get_indices(query, knn, self.keys, self.keys)
-        else:
-            bs = len(query)
-            query = query.view(-1, self.heads, self.k_dim)
-            outputs = [
-                self._get_indices(query[:, i], knn, self.keys[i][0], self.keys[i][1])
-                for i in range(self.heads)
-            ]
-            scores = torch.cat([s.unsqueeze(1) for s, _ in outputs], 1).view(bs, knn)
-            indices = torch.cat([idx.unsqueeze(1) for _, idx in outputs], 1).view(bs, knn)
-            return scores, indices
+        bs = len(query)
+        query = query.view(-1, self.heads, self.k_dim)
+        outputs = [
+            self._get_indices(query[:, i], knn, self.keys[i][0], self.keys[i][1])
+            for i in range(self.heads)
+        ]
+        scores = torch.cat([s.unsqueeze(1) for s, _ in outputs], 1).view(bs, knn)
+        indices = torch.cat([idx.unsqueeze(1) for _, idx in outputs], 1).view(bs, knn)
+        return scores, indices
 
 
 class HashingMemoryProductFast(HashingMemoryProduct):

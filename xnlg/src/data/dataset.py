@@ -231,8 +231,8 @@ class Dataset(object):
             rng.shuffle(batches)
 
         # sanity checks
-        assert n_sentences == sum([len(x) for x in batches])
-        assert lengths[indices].sum() == sum([lengths[x].sum() for x in batches])
+        assert n_sentences == sum(len(x) for x in batches)
+        assert lengths[indices].sum() == sum(lengths[x].sum() for x in batches)
         # assert set.union(*[set(x.tolist()) for x in batches]) == set(range(n_sentences))  # slow
 
         # return the iterator
@@ -409,8 +409,8 @@ class ParallelDataset(Dataset):
             np.random.shuffle(batches)
 
         # sanity checks
-        assert n_sentences == sum([len(x) for x in batches])
-        assert lengths[indices].sum() == sum([lengths[x].sum() for x in batches])
+        assert n_sentences == sum(len(x) for x in batches)
+        assert lengths[indices].sum() == sum(lengths[x].sum() for x in batches)
         # assert set.union(*[set(x.tolist()) for x in batches]) == set(range(n_sentences))  # slow
 
         # return the iterator
@@ -611,8 +611,8 @@ class TripleDataset(Dataset):
             np.random.shuffle(batches)
 
         # sanity checks
-        assert n_sentences == sum([len(x) for x in batches])
-        assert lengths[indices].sum() == sum([lengths[x].sum() for x in batches])
+        assert n_sentences == sum(len(x) for x in batches)
+        assert lengths[indices].sum() == sum(lengths[x].sum() for x in batches)
         # assert set.union(*[set(x.tolist()) for x in batches]) == set(range(n_sentences))  # slow
 
         # return the iterator
